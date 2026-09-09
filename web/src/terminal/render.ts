@@ -94,7 +94,9 @@ export function renderBoard(game: GameState): Line[] {
     [
       seg('챌린지 - '),
       teamSeg(game.teamNames.away, 'away'), seg(` ${game.challenges.away} / `),
-      teamSeg(game.teamNames.home, 'home'), seg(` ${game.challenges.home}   `),
+      teamSeg(game.teamNames.home, 'home'), seg(` ${game.challenges.home}`),
+    ],
+    [
       seg('전략 - '),
       teamSeg(game.teamNames.away, 'away'), seg(` ${game.strategyUses.away} / `),
       teamSeg(game.teamNames.home, 'home'), seg(` ${game.strategyUses.home}`),
