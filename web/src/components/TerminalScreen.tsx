@@ -28,6 +28,7 @@ export default function TerminalScreen() {
   const mode = useTerminalStore((s) => s.mode);
   const game = useTerminalStore((s) => s.game);
   const fastForward = useTerminalStore((s) => s.fastForward);
+  const isAnimating = useTerminalStore((s) => s.isAnimating);
   const submit = useTerminalStore((s) => s.submit);
   const toggleFastForward = useTerminalStore((s) => s.toggleFastForward);
   const restart = useTerminalStore((s) => s.restart);
@@ -98,7 +99,7 @@ export default function TerminalScreen() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(input); }}
-            disabled={mode === 'over'}
+            disabled={mode === 'over' || isAnimating}
             className="flex-1 bg-transparent text-neutral-100 text-sm outline-none disabled:opacity-40"
             autoFocus
             spellCheck={false}
@@ -109,24 +110,24 @@ export default function TerminalScreen() {
         <div className="bg-neutral-900 px-3 py-2 flex flex-wrap gap-2">
           {mode === 'command' && game && (
             <>
-              <QuickButton label="Enter (진행)" tone="accent" onClick={() => send('')} />
+              <QuickButton label="Enter (진행)" tone="accent" onClick={() => send('')} disabled={isAnimating} />
               <QuickButton
                 label={`공격 전략 (${offenseTeam ? game.strategyUses[offenseTeam] : 0})`}
                 onClick={() => send('o')}
-                disabled={!offenseTeam || game.strategyUses[offenseTeam] <= 0}
+                disabled={isAnimating || !offenseTeam || game.strategyUses[offenseTeam] <= 0}
               />
               <QuickButton
                 label={`수비 전략 (${defenseTeam ? game.strategyUses[defenseTeam] : 0})`}
                 onClick={() => send('d')}
-                disabled={!defenseTeam || game.strategyUses[defenseTeam] <= 0}
+                disabled={isAnimating || !defenseTeam || game.strategyUses[defenseTeam] <= 0}
               />
-              <QuickButton label="q (종료)" tone="warn" onClick={() => send('q')} />
+              <QuickButton label="q (종료)" tone="warn" onClick={() => send('q')} disabled={isAnimating} />
             </>
           )}
           {mode === 'challenge' && (
             <>
-              <QuickButton label="y (도전한다)" tone="accent" onClick={() => send('y')} />
-              <QuickButton label="n (그냥 진행)" onClick={() => send('n')} />
+              <QuickButton label="y (도전한다)" tone="accent" onClick={() => send('y')} disabled={isAnimating} />
+              <QuickButton label="n (그냥 진행)" onClick={() => send('n')} disabled={isAnimating} />
             </>
           )}
           {(mode === 'pick-away' || mode === 'pick-home') && (

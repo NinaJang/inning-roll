@@ -9,6 +9,7 @@ import {
 } from '../terminal/render';
 
 export type Mode = 'pick-away' | 'pick-home' | 'pick-innings' | 'command' | 'challenge' | 'over';
+type PlayYield = Extract<TurnYield, { kind: 'play' }>;
 
 interface PendingChallenge {
   play: PlayEvent;
@@ -24,6 +25,7 @@ interface TerminalStore {
   turnGen: Generator<TurnYield, void, boolean> | null;
   pendingChallenge: PendingChallenge | null;
   fastForward: boolean;
+  isAnimating: boolean;
   autoTimer: number | null;
 
   submit: (raw: string) => void;
@@ -32,6 +34,9 @@ interface TerminalStore {
 }
 
 const AUTO_DELAY_MS = 500;
+const ROLL_FRAMES = 4;
+const ROLL_FRAME_MS = 160;
+const BAR_LEN = 5;
 
 function welcomeLines(): Line[] {
   return [
@@ -47,9 +52,21 @@ function echo(cmd: string): Line {
   return [seg(cmd ? `> ${cmd}` : '> (진행)', COLOR.dim)];
 }
 
+function rollingFrame(frame: number): Line {
+  const filled = Math.min(BAR_LEN, Math.round(((frame + 1) / ROLL_FRAMES) * BAR_LEN));
+  const bar = '▰'.repeat(filled) + '▱'.repeat(BAR_LEN - filled);
+  const n1 = 1 + Math.floor(Math.random() * 6);
+  const n2 = 1 + Math.floor(Math.random() * 6);
+  return [seg('🎲 '), seg(`[${bar}] `, COLOR.dim), seg(`[${n1}] [${n2}]  굴리는 중...`, COLOR.dim)];
+}
+
 export const useTerminalStore = create<TerminalStore>((set, get) => {
   function print(newLines: Line[]) {
     set((s) => ({ lines: [...s.lines, ...newLines] }));
+  }
+
+  function replaceLastLine(line: Line) {
+    set((s) => ({ lines: [...s.lines.slice(0, -1), line] }));
   }
 
   function clearAutoTimer() {
@@ -77,25 +94,29 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     }
   }
 
-  function drive(result: IteratorResult<TurnYield, void>) {
-    if (result.done) {
-      settleTurn();
-      return;
-    }
+  // 타석 굴림(2d6)에 진행바+주사위 이모지 사이클링 연출을 입힌 뒤 실제 결과로 교체한다.
+  // 빨리감기 중에는 속도가 생명이므로 애니메이션 없이 바로 결과를 보여준다.
+  function animateDiceRoll(y: PlayYield) {
+    set({ isAnimating: true });
+    print([rollingFrame(0)]);
+    let frame = 0;
+    const tick = () => {
+      frame += 1;
+      if (frame >= ROLL_FRAMES) {
+        replaceLastLine(renderPlay(y.play, get().game!)[0]);
+        set({ isAnimating: false });
+        afterPlayPrinted(y);
+        return;
+      }
+      replaceLastLine(rollingFrame(frame));
+      const t = window.setTimeout(tick, ROLL_FRAME_MS);
+      set({ autoTimer: t });
+    };
+    const t = window.setTimeout(tick, ROLL_FRAME_MS);
+    set({ autoTimer: t });
+  }
 
-    const y = result.value;
-
-    if (y.kind === 'strategy') {
-      print([
-        [seg(`📋 감독 지시 (${y.side === 'offense' ? '공격' : '수비'}): `), seg(y.chosenLabel, COLOR.strategy)],
-        ...(y.boostOnly ? [[seg('   다음 타석에 효과가 적용됩니다.', COLOR.dim)] as Line] : []),
-      ]);
-      // CLI와 동일하게 별도 확인 없이 곧바로 이어서 진행한다.
-      drive(get().turnGen!.next(true));
-      return;
-    }
-
-    print(renderPlay(y.play, get().game!));
+  function afterPlayPrinted(y: PlayYield) {
     if (y.play.halfEnded && !y.play.gameOver) {
       print(renderHalfTransition(y.play, get().game!));
     }
@@ -120,6 +141,34 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
 
     // 챌린지가 필요 없으면 곧바로 이어서 진행한다 (턴이 끝나거나 다음 챌린지가 나올 때까지).
     drive(get().turnGen!.next(false));
+  }
+
+  function drive(result: IteratorResult<TurnYield, void>) {
+    if (result.done) {
+      settleTurn();
+      return;
+    }
+
+    const y = result.value;
+
+    if (y.kind === 'strategy') {
+      print([
+        [seg(`📋 감독 지시 (${y.side === 'offense' ? '공격' : '수비'}): `), seg(y.chosenLabel, COLOR.strategy)],
+        ...(y.boostOnly ? [[seg('   다음 타석에 효과가 적용됩니다.', COLOR.dim)] as Line] : []),
+      ]);
+      // CLI와 동일하게 별도 확인 없이 곧바로 이어서 진행한다.
+      drive(get().turnGen!.next(true));
+      return;
+    }
+
+    const isDiceRoll = y.play.d1 !== undefined;
+    if (isDiceRoll && !get().fastForward) {
+      animateDiceRoll(y);
+      return;
+    }
+
+    print(renderPlay(y.play, get().game!));
+    afterPlayPrinted(y);
   }
 
   function startCommandTurn(side: 'offense' | 'defense' | null) {
@@ -197,9 +246,11 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     turnGen: null,
     pendingChallenge: null,
     fastForward: false,
+    isAnimating: false,
     autoTimer: null,
 
     submit: (raw) => {
+      if (get().isAnimating) return;
       const mode = get().mode;
       const cmd = raw.trim();
 
@@ -258,7 +309,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     toggleFastForward: () => {
       set((s) => ({ fastForward: !s.fastForward }));
       const s = get();
-      if (s.fastForward && s.mode === 'command' && !s.turnGen) {
+      if (s.fastForward && s.mode === 'command' && !s.turnGen && !s.isAnimating) {
         s.submit('');
       }
     },
@@ -274,6 +325,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         turnGen: null,
         pendingChallenge: null,
         fastForward: false,
+        isAnimating: false,
       });
     },
   };
