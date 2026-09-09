@@ -52,7 +52,7 @@ function numberLineup(lineup: Player[]): Player[] {
 
 export const TEAMS: Record<string, Team> = {
   seoul: {
-    id: 'seoul', name: '서울 코메츠', tagline: '홈런 군단',
+    id: 'seoul', name: '서울 코메츠', tagline: '홈런 군단', color: 'text-orange-400',
     lineup: numberLineup([
       player('박서준', '중견수'),
       player('이현우', '유격수', 'EYE'),
@@ -67,7 +67,7 @@ export const TEAMS: Record<string, Team> = {
     pitcher: player('한지훈', '투수', 'ACE'),
   },
   busan: {
-    id: 'busan', name: '부산 웨이브', tagline: '발야구',
+    id: 'busan', name: '부산 웨이브', tagline: '발야구', color: 'text-sky-400',
     lineup: numberLineup([
       player('오세훈', '중견수', 'SPEED'),
       player('배지환', '유격수', 'SPEED'),
@@ -82,7 +82,7 @@ export const TEAMS: Record<string, Team> = {
     pitcher: player('곽태식', '투수', 'WILD'),
   },
   daejeon: {
-    id: 'daejeon', name: '대전 볼케이노', tagline: '실속형 타격',
+    id: 'daejeon', name: '대전 볼케이노', tagline: '실속형 타격', color: 'text-rose-400',
     lineup: numberLineup([
       player('백승우', '2루수', 'CONTACT'),
       player('남궁현', '유격수', 'EYE'),
@@ -97,7 +97,7 @@ export const TEAMS: Record<string, Team> = {
     pitcher: player('마상혁', '투수', 'GROUNDBALL'),
   },
   incheon: {
-    id: 'incheon', name: '인천 스콜피온스', tagline: '공격 올인',
+    id: 'incheon', name: '인천 스콜피온스', tagline: '공격 올인', color: 'text-lime-400',
     lineup: numberLineup([
       player('도현우', '중견수', 'SPEED'),
       player('반재승', '유격수', 'CONTACT'),
@@ -112,7 +112,7 @@ export const TEAMS: Record<string, Team> = {
     pitcher: player('천명호', '투수'),
   },
   daegu: {
-    id: 'daegu', name: '대구 팰컨스', tagline: '빈틈없는 밸런스',
+    id: 'daegu', name: '대구 팰컨스', tagline: '빈틈없는 밸런스', color: 'text-indigo-400',
     lineup: numberLineup([
       player('나승우', '중견수', 'SPEED'),
       player('명재원', '유격수', 'CONTACT'),

@@ -126,7 +126,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       const teamName = get().game!.teamNames[y.side];
       const remaining = get().game!.challenges[y.side];
       print([[
-        seg('📺 [챌린지] ', COLOR.review), teamSeg(teamName, y.side),
+        seg('📺 [챌린지] ', COLOR.review), teamSeg(teamName),
         seg(` - 이 판정에 도전하시겠습니까? (잔여 ${remaining}회) y/n`),
       ]]);
       set({ pendingChallenge: { play: y.play, side: y.side }, mode: 'challenge' });
@@ -225,7 +225,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       const side = cmd === 'o' ? 'offense' : 'defense';
       const team = cmd === 'o' ? battingTeam(game) : fieldingTeam(game);
       if (game.strategyUses[team] <= 0) {
-        print([[teamSeg(game.teamNames[team], team), seg('은(는) 전략 사용 횟수를 모두 소진했습니다.', COLOR.danger)]]);
+        print([[teamSeg(game.teamNames[team]), seg('은(는) 전략 사용 횟수를 모두 소진했습니다.', COLOR.danger)]]);
         print(renderBoard(game));
         return;
       }
@@ -286,7 +286,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         set({ game, mode: 'command' });
         print([
           [],
-          [teamSeg(away.name, 'away'), seg(' (원정) vs '), teamSeg(home.name, 'home'), seg(` (홈) — ${n}이닝 경기 시작.`)],
+          [teamSeg(away.name), seg(' (원정) vs '), teamSeg(home.name), seg(` (홈) — ${n}이닝 경기 시작.`)],
           plain('명령어: Enter=진행 / o=공격 전략 / d=수비 전략 / q=종료'),
         ]);
         print(renderBoard(game));

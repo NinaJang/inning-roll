@@ -38,6 +38,7 @@ export interface Team {
   id: string;
   name: string;
   tagline: string;
+  color: string; // 터미널 출력에서 이 팀 이름에 항상 쓰이는 고유 색 (Tailwind text-* 클래스)
   lineup: Player[];
   pitcher: Player;
 }

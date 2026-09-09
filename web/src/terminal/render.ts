@@ -12,8 +12,6 @@ export type Line = Segment[];
 
 // 일반 진행 멘트는 흰색이 기본값이고, 팀명/이벤트성 문구에만 별도 색을 준다.
 export const COLOR = {
-  away: 'text-sky-400',
-  home: 'text-orange-400',
   chaos: 'text-yellow-400',
   strategy: 'text-violet-400',
   review: 'text-cyan-400',
@@ -23,12 +21,17 @@ export const COLOR = {
   danger: 'text-red-400',
 };
 
+const TEAM_COLOR_BY_NAME: Record<string, string> = Object.fromEntries(
+  TEAM_LIST.map((t) => [t.name, t.color]),
+);
+
 export function seg(text: string, cls?: string): Segment {
   return { text, cls };
 }
 
-export function teamSeg(name: string, side: TeamSide): Segment {
-  return seg(name, side === 'away' ? COLOR.away : COLOR.home);
+// 원정/홈 역할이 아니라 구단마다 고정된 고유 색을 쓴다 (teams.ts의 color 필드).
+export function teamSeg(name: string): Segment {
+  return seg(name, TEAM_COLOR_BY_NAME[name]);
 }
 
 export function plain(text: string): Line {
@@ -78,9 +81,9 @@ export function renderBoard(game: GameState): Line[] {
     [],
     [
       seg(`${halfLabel}  |  아웃 ${Math.min(game.outs, 3)}  |  `),
-      teamSeg(game.teamNames.away, 'away'),
+      teamSeg(game.teamNames.away),
       seg(` ${game.score.away} : ${game.score.home} `),
-      teamSeg(game.teamNames.home, 'home'),
+      teamSeg(game.teamNames.home),
     ],
     ...basesAsciiLines(game.bases),
     runnerSummaryLine(game.bases),
@@ -88,18 +91,18 @@ export function renderBoard(game: GameState): Line[] {
       seg('타석 - '),
       seg(`${nameOf(batter)}${spec}`),
       seg(' ('),
-      teamSeg(game.teamNames[battingSide], battingSide),
+      teamSeg(game.teamNames[battingSide]),
       seg(')'),
     ],
     [
       seg('챌린지 - '),
-      teamSeg(game.teamNames.away, 'away'), seg(` ${game.challenges.away} / `),
-      teamSeg(game.teamNames.home, 'home'), seg(` ${game.challenges.home}`),
+      teamSeg(game.teamNames.away), seg(` ${game.challenges.away} / `),
+      teamSeg(game.teamNames.home), seg(` ${game.challenges.home}`),
     ],
     [
       seg('전략 - '),
-      teamSeg(game.teamNames.away, 'away'), seg(` ${game.strategyUses.away} / `),
-      teamSeg(game.teamNames.home, 'home'), seg(` ${game.strategyUses.home}`),
+      teamSeg(game.teamNames.away), seg(` ${game.strategyUses.away} / `),
+      teamSeg(game.teamNames.home), seg(` ${game.strategyUses.home}`),
     ],
   ];
 }
@@ -114,20 +117,20 @@ export function renderPlay(play: PlayEvent, game: GameState): Line[] {
     return [[seg('📺 '), seg(play.label, COLOR.review), ...tail]];
   }
   if (play.isChaos) {
-    return [[seg('⚡ '), teamSeg(team, play.team), seg(' '), seg(play.label, COLOR.chaos), ...tail]];
+    return [[seg('⚡ '), teamSeg(team), seg(' '), seg(play.label, COLOR.chaos), ...tail]];
   }
   if (play.d1 !== undefined) {
     return [[
       seg('🎲 '), seg(`${play.d1}+${play.d2}=${play.sum} → `),
       seg(play.label),
-      seg(' ('), seg(play.batterName ?? ''), seg(', '), teamSeg(team, play.team), seg(')'),
+      seg(' ('), seg(play.batterName ?? ''), seg(', '), teamSeg(team), seg(')'),
       ...tail,
     ]];
   }
   // 즉발형 감독 전략(번트/고의4구) 결과
   return [[
     seg('📋 '), seg(play.label, COLOR.strategy),
-    seg(' ('), seg(play.batterName ?? ''), seg(', '), teamSeg(team, play.team), seg(')'),
+    seg(' ('), seg(play.batterName ?? ''), seg(', '), teamSeg(team), seg(')'),
     ...tail,
   ]];
 }
@@ -146,10 +149,10 @@ export function renderFinish(game: GameState): Line[] {
     [seg('=== 경기 종료 ===', COLOR.system)],
     [
       seg('최종 스코어  '),
-      teamSeg(game.teamNames.away, 'away'), seg(` ${away} : ${home} `),
-      teamSeg(game.teamNames.home, 'home'),
+      teamSeg(game.teamNames.away), seg(` ${away} : ${home} `),
+      teamSeg(game.teamNames.home),
     ],
-    winnerSide ? [teamSeg(game.teamNames[winnerSide], winnerSide), seg(' 승리')] : plain('무승부'),
+    winnerSide ? [teamSeg(game.teamNames[winnerSide]), seg(' 승리')] : plain('무승부'),
     [],
     plain('"다시하기"를 눌러 팀을 다시 고를 수 있습니다.'),
   ];
