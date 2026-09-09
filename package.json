@@ -1,0 +1,11 @@
+{
+  "name": "inning-roll",
+  "version": "0.1.0",
+  "private": true,
+  "description": "주사위(2d6) 기반 야구 보드게임 텍스트 프로토타입",
+  "main": "cli.js",
+  "scripts": {
+    "start": "node cli.js",
+    "sim": "node cli.js --sim 1000"
+  }
+}
