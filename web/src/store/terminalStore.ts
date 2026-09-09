@@ -3,7 +3,10 @@ import { battingTeam, createGame, fieldingTeam } from '../engine/engine';
 import { runTurn, type TurnYield } from '../engine/turnController';
 import type { GameState, PlayEvent, TeamSide } from '../engine/types';
 import { TEAM_LIST } from '../engine/teams';
-import { renderBoard, renderFinish, renderHalfTransition, renderPlay, renderTeamList } from '../terminal/render';
+import {
+  COLOR, type Line, plain, renderBoard, renderFinish, renderHalfTransition,
+  renderPlay, renderTeamList, seg, teamSeg,
+} from '../terminal/render';
 
 export type Mode = 'pick-away' | 'pick-home' | 'pick-innings' | 'command' | 'challenge' | 'over';
 
@@ -13,7 +16,7 @@ interface PendingChallenge {
 }
 
 interface TerminalStore {
-  lines: string[];
+  lines: Line[];
   mode: Mode;
   awayId: string | null;
   homeId: string | null;
@@ -29,10 +32,23 @@ interface TerminalStore {
 }
 
 const AUTO_DELAY_MS = 500;
-const WELCOME = ['⚾ 이닝롤 — 터미널 모드', '팀을 골라 경기를 시작합니다.'];
+
+function welcomeLines(): Line[] {
+  return [
+    plain('⚾ 이닝롤 — 터미널 모드'),
+    plain('팀을 골라 경기를 시작합니다.'),
+    ...renderTeamList(),
+    [],
+    plain('원정팀 번호를 입력하세요 (1-5)'),
+  ];
+}
+
+function echo(cmd: string): Line {
+  return [seg(cmd ? `> ${cmd}` : '> (진행)', COLOR.dim)];
+}
 
 export const useTerminalStore = create<TerminalStore>((set, get) => {
-  function print(newLines: string[]) {
+  function print(newLines: Line[]) {
     set((s) => ({ lines: [...s.lines, ...newLines] }));
   }
 
@@ -71,8 +87,8 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
 
     if (y.kind === 'strategy') {
       print([
-        `📋 감독 지시 (${y.side === 'offense' ? '공격' : '수비'}): ${y.chosenLabel}`,
-        ...(y.boostOnly ? ['   다음 타석에 효과가 적용됩니다.'] : []),
+        [seg(`📋 감독 지시 (${y.side === 'offense' ? '공격' : '수비'}): `), seg(y.chosenLabel, COLOR.strategy)],
+        ...(y.boostOnly ? [[seg('   다음 타석에 효과가 적용됩니다.', COLOR.dim)] as Line] : []),
       ]);
       // CLI와 동일하게 별도 확인 없이 곧바로 이어서 진행한다.
       drive(get().turnGen!.next(true));
@@ -88,7 +104,10 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     if (y.needsChallenge && y.side) {
       const teamName = get().game!.teamNames[y.side];
       const remaining = get().game!.challenges[y.side];
-      print([`[챌린지] ${teamName} - 이 판정에 도전하시겠습니까? (잔여 ${remaining}회) y/n`]);
+      print([[
+        seg('📺 [챌린지] ', COLOR.review), teamSeg(teamName, y.side),
+        seg(` - 이 판정에 도전하시겠습니까? (잔여 ${remaining}회) y/n`),
+      ]]);
       set({ pendingChallenge: { play: y.play, side: y.side }, mode: 'challenge' });
       return;
     }
@@ -114,10 +133,10 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
   function handleChallengeAnswer(raw: string) {
     const answer = raw.trim().toLowerCase();
     if (answer !== 'y' && answer !== 'n') {
-      print(['y 또는 n을 입력하세요.']);
+      print([[seg('y 또는 n을 입력하세요.', COLOR.danger)]]);
       return;
     }
-    print([`> ${answer}`]);
+    print([echo(answer)]);
     const { turnGen, pendingChallenge, game } = get();
     set({ pendingChallenge: null });
     if (!turnGen || !pendingChallenge || !game) return;
@@ -130,24 +149,25 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     const side = pendingChallenge.side;
     const result = turnGen.next(true);
     const overturned = !result.done && result.value.kind === 'play' && result.value.play.isReview;
-    print([
+    print([[
+      seg('📺 판독 결과: ', COLOR.review),
       overturned
-        ? '📺 판독 결과: 번복! (챌린지 횟수 유지)'
-        : `📺 판독 결과: 원심 유지 (잔여 ${get().game!.challenges[side]}회)`,
-    ]);
+        ? seg('번복! (챌린지 횟수 유지)', COLOR.review)
+        : seg(`원심 유지 (잔여 ${get().game!.challenges[side]}회)`, COLOR.review),
+    ]]);
     drive(result);
   }
 
   function handleCommand(raw: string) {
     const cmd = raw.trim().toLowerCase();
-    print([cmd ? `> ${cmd}` : '> (진행)']);
+    print([echo(cmd)]);
 
     if (cmd === 'q') {
-      print(['경기를 중단합니다. "다시하기"로 처음부터 시작할 수 있습니다.']);
+      print([[seg('경기를 중단합니다. "다시하기"로 처음부터 시작할 수 있습니다.', COLOR.system)]]);
       set({ mode: 'over' });
       return;
     }
-    if (cmd === '' ) {
+    if (cmd === '') {
       startCommandTurn(null);
       return;
     }
@@ -156,7 +176,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       const side = cmd === 'o' ? 'offense' : 'defense';
       const team = cmd === 'o' ? battingTeam(game) : fieldingTeam(game);
       if (game.strategyUses[team] <= 0) {
-        print([`${game.teamNames[team]}은(는) 전략 사용 횟수를 모두 소진했습니다.`]);
+        print([[teamSeg(game.teamNames[team], team), seg('은(는) 전략 사용 횟수를 모두 소진했습니다.', COLOR.danger)]]);
         print(renderBoard(game));
         return;
       }
@@ -164,12 +184,12 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       startCommandTurn(side);
       return;
     }
-    print(['알 수 없는 명령입니다. Enter=진행, o=공격 전략, d=수비 전략, q=종료']);
+    print([[seg('알 수 없는 명령입니다. Enter=진행, o=공격 전략, d=수비 전략, q=종료', COLOR.danger)]]);
     print(renderBoard(get().game!));
   }
 
   return {
-    lines: [...WELCOME, ...renderTeamList(), '', '원정팀 번호를 입력하세요 (1-5)'],
+    lines: welcomeLines(),
     mode: 'pick-away',
     awayId: null,
     homeId: null,
@@ -185,36 +205,39 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
 
       if (mode === 'pick-away' || mode === 'pick-home') {
         const idx = parseInt(cmd, 10) - 1;
-        print([`> ${cmd}`]);
+        print([echo(cmd)]);
         if (!(idx >= 0 && idx < TEAM_LIST.length)) {
-          print(['올바른 번호를 입력하세요.']);
+          print([[seg('올바른 번호를 입력하세요.', COLOR.danger)]]);
           return;
         }
         if (mode === 'pick-away') {
           set({ awayId: TEAM_LIST[idx].id });
-          print(['', '홈팀을 선택하세요.', ...renderTeamList(), '', '홈팀 번호를 입력하세요 (1-5)']);
+          print([[], plain('홈팀을 선택하세요.'), ...renderTeamList(), [], plain('홈팀 번호를 입력하세요 (1-5)')]);
           set({ mode: 'pick-home' });
         } else {
           set({ homeId: TEAM_LIST[idx].id });
-          print(['', '이닝 수를 입력하세요 (3 / 5 / 7 / 9, 그냥 Enter면 9)']);
+          print([[], plain('이닝 수를 입력하세요 (3 / 5 / 7 / 9, 그냥 Enter면 9)')]);
           set({ mode: 'pick-innings' });
         }
         return;
       }
 
       if (mode === 'pick-innings') {
-        print([`> ${cmd || '9'}`]);
+        print([echo(cmd || '9')]);
         const n = cmd === '' ? 9 : parseInt(cmd, 10);
         if (![3, 5, 7, 9].includes(n)) {
-          print(['3, 5, 7, 9 중 하나를 입력하세요.']);
+          print([[seg('3, 5, 7, 9 중 하나를 입력하세요.', COLOR.danger)]]);
           return;
         }
         const away = TEAM_LIST.find((t) => t.id === get().awayId)!;
         const home = TEAM_LIST.find((t) => t.id === get().homeId)!;
         const game = createGame(away, home, n);
         set({ game, mode: 'command' });
-        print(['', `${away.name} (원정) vs ${home.name} (홈) — ${n}이닝 경기 시작.`,
-          '명령어: Enter=진행 / o=공격 전략 / d=수비 전략 / q=종료']);
+        print([
+          [],
+          [teamSeg(away.name, 'away'), seg(' (원정) vs '), teamSeg(home.name, 'home'), seg(` (홈) — ${n}이닝 경기 시작.`)],
+          plain('명령어: Enter=진행 / o=공격 전략 / d=수비 전략 / q=종료'),
+        ]);
         print(renderBoard(game));
         return;
       }
@@ -243,7 +266,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     restart: () => {
       clearAutoTimer();
       set({
-        lines: [...WELCOME, ...renderTeamList(), '', '원정팀 번호를 입력하세요 (1-5)'],
+        lines: welcomeLines(),
         mode: 'pick-away',
         awayId: null,
         homeId: null,

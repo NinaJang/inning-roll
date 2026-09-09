@@ -8,9 +8,9 @@ function QuickButton({ label, onClick, disabled, tone = 'default' }: {
   tone?: 'default' | 'accent' | 'warn';
 }) {
   const toneClass = tone === 'accent'
-    ? 'border-green-500 text-green-400 hover:bg-green-500/10'
+    ? 'border-emerald-500 text-emerald-400 hover:bg-emerald-500/10'
     : tone === 'warn'
-      ? 'border-amber-500 text-amber-400 hover:bg-amber-500/10'
+      ? 'border-red-500 text-red-400 hover:bg-red-500/10'
       : 'border-neutral-600 text-neutral-300 hover:bg-neutral-700/50';
   return (
     <button
@@ -74,26 +74,32 @@ export default function TerminalScreen() {
           <span className="ml-2 text-neutral-400 text-xs">inning-roll — bash</span>
           <label className="ml-auto flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
             ⚡ff
-            <input type="checkbox" checked={fastForward} onChange={toggleFastForward} className="w-3.5 h-3.5 accent-green-500" />
+            <input type="checkbox" checked={fastForward} onChange={toggleFastForward} className="w-3.5 h-3.5 accent-emerald-500" />
           </label>
         </div>
 
         {/* 스크롤백 */}
-        <div ref={scrollRef} className="bg-neutral-950 text-green-400 text-sm p-3 h-[60vh] overflow-y-auto whitespace-pre-wrap leading-relaxed">
-          {lines.join('\n')}
-          <span className="inline-block w-2 h-4 bg-green-500 align-text-bottom ml-1 animate-pulse" />
+        <div ref={scrollRef} className="bg-neutral-950 text-neutral-200 text-sm p-3 h-[60vh] overflow-y-auto leading-relaxed">
+          {lines.map((line, i) => (
+            <div key={i} className="whitespace-pre-wrap">
+              {line.length === 0
+                ? ' '
+                : line.map((s, j) => <span key={j} className={s.cls}>{s.text}</span>)}
+            </div>
+          ))}
+          <span className="inline-block w-2 h-4 bg-neutral-300 align-text-bottom ml-1 animate-pulse" />
         </div>
 
         {/* 입력줄 */}
         <div className="bg-neutral-950 border-t border-neutral-800 px-3 py-2 flex items-center gap-2">
-          <span className="text-green-500 text-sm shrink-0">{promptLabel} $</span>
+          <span className="text-cyan-400 text-sm shrink-0">{promptLabel} $</span>
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(input); }}
             disabled={mode === 'over'}
-            className="flex-1 bg-transparent text-green-300 text-sm outline-none disabled:opacity-40"
+            className="flex-1 bg-transparent text-neutral-100 text-sm outline-none disabled:opacity-40"
             autoFocus
             spellCheck={false}
           />
