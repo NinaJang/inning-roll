@@ -41,9 +41,13 @@ export default function TerminalScreen() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [lines]);
 
+  // 버튼 클릭이나 애니메이션(입력창 임시 비활성화) 때문에 포커스가 빠지면
+  // 매번 다시 클릭해야 Enter가 먹는 문제가 있었다 - 상태가 바뀔 때마다 자동으로 되돌려준다.
   useEffect(() => {
-    inputRef.current?.focus();
-  }, [mode]);
+    if (mode !== 'over' && !isAnimating) {
+      inputRef.current?.focus();
+    }
+  }, [mode, isAnimating, lines.length]);
 
   function send(value: string) {
     submit(value);
@@ -112,12 +116,12 @@ export default function TerminalScreen() {
             <>
               <QuickButton label="Enter (진행)" tone="accent" onClick={() => send('')} disabled={isAnimating} />
               <QuickButton
-                label={`공격 전략 (${offenseTeam ? game.strategyUses[offenseTeam] : 0})`}
+                label={`o 공격 전략 (${offenseTeam ? game.strategyUses[offenseTeam] : 0})`}
                 onClick={() => send('o')}
                 disabled={isAnimating || !offenseTeam || game.strategyUses[offenseTeam] <= 0}
               />
               <QuickButton
-                label={`수비 전략 (${defenseTeam ? game.strategyUses[defenseTeam] : 0})`}
+                label={`d 수비 전략 (${defenseTeam ? game.strategyUses[defenseTeam] : 0})`}
                 onClick={() => send('d')}
                 disabled={isAnimating || !defenseTeam || game.strategyUses[defenseTeam] <= 0}
               />
