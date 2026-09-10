@@ -44,7 +44,7 @@ function welcomeLines(): Line[] {
     plain('팀을 골라 경기를 시작합니다.'),
     ...renderTeamList(),
     [],
-    plain('원정팀 번호를 입력하세요 (1-5)'),
+    plain(`원정팀 번호를 입력하세요 (1-${TEAM_LIST.length})`),
   ];
 }
 
@@ -263,7 +263,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         }
         if (mode === 'pick-away') {
           set({ awayId: TEAM_LIST[idx].id });
-          print([[], plain('홈팀을 선택하세요.'), ...renderTeamList(), [], plain('홈팀 번호를 입력하세요 (1-5)')]);
+          print([[], plain('홈팀을 선택하세요.'), ...renderTeamList(), [], plain(`홈팀 번호를 입력하세요 (1-${TEAM_LIST.length})`)]);
           set({ mode: 'pick-home' });
         } else {
           set({ homeId: TEAM_LIST[idx].id });

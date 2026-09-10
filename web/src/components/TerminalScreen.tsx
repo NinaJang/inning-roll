@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { TEAM_LIST } from '../engine/teams';
 import { useTerminalStore } from '../store/terminalStore';
 
 function QuickButton({ label, onClick, disabled, tone = 'default' }: {
@@ -136,8 +137,8 @@ export default function TerminalScreen() {
           )}
           {(mode === 'pick-away' || mode === 'pick-home') && (
             <>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <QuickButton key={n} label={String(n)} onClick={() => send(String(n))} />
+              {TEAM_LIST.map((_, i) => (
+                <QuickButton key={i} label={String(i + 1)} onClick={() => send(String(i + 1))} />
               ))}
             </>
           )}
