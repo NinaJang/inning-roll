@@ -78,10 +78,18 @@ export default function TerminalScreen() {
   const showOffenseBtn = controlMode !== 'solo' || offenseTeam === humanSide;
   const showDefenseBtn = controlMode !== 'solo' || defenseTeam === humanSide;
 
+  // Electron 알림창 셸 안에서 열렸으면, 브라우저 탭 안에서 가운데 떠 있는 카드가 아니라
+  // 작은 창 전체를 꽉 채우는 레이아웃으로 바뀐다 (창 자체가 이미 작고 위치도 고정돼 있으므로).
+  const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-3">
+    <div className={isElectron ? 'h-screen bg-transparent' : 'min-h-screen bg-black flex items-center justify-center p-3'}>
       <div
-        className="w-full max-w-2xl rounded-lg overflow-hidden shadow-2xl border border-neutral-800"
+        className={
+          isElectron
+            ? 'h-full w-full flex flex-col rounded-lg overflow-hidden shadow-2xl border border-neutral-800'
+            : 'w-full max-w-2xl rounded-lg overflow-hidden shadow-2xl border border-neutral-800'
+        }
         style={{ fontFamily: "'JetBrains Mono', ui-monospace, Consolas, monospace" }}
       >
         {/* 타이틀바 */}
@@ -105,7 +113,10 @@ export default function TerminalScreen() {
         </div>
 
         {/* 스크롤백 */}
-        <div ref={scrollRef} className="bg-neutral-950 text-neutral-200 text-sm p-3 h-[60vh] overflow-y-auto leading-relaxed">
+        <div
+          ref={scrollRef}
+          className={`bg-neutral-950 text-neutral-200 text-sm p-3 overflow-y-auto leading-relaxed ${isElectron ? 'flex-1 min-h-0' : 'h-[60vh]'}`}
+        >
           {lines.map((line, i) => (
             <div key={i} className="whitespace-pre-wrap">
               {line.length === 0
