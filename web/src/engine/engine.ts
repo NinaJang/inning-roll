@@ -340,9 +340,37 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
 
   switch (code) {
     case 'K':
-    case 'F':
       outsAdded = 1;
       break;
+    case 'F': {
+      outsAdded = 1;
+      // 이미 2아웃이면 이 아웃으로 이닝이 끝나므로, 잡히는 순간 득점 기회 자체가 사라진다
+      // (실제 야구에서도 3아웃째 태그업은 득점으로 인정되지 않는다).
+      if (state.outs < 2) {
+        if (state.bases[2]) {
+          // 3루 주자 태그업 - 웬만큼 깊은 뜬공이면 대부분 득점한다 (희생플라이).
+          if (Math.random() < 0.75) {
+            const runner = state.bases[2]!;
+            const bases = state.bases.slice() as Bases;
+            bases[2] = null;
+            state.bases = bases;
+            runs = 1;
+            label = `희생플라이 - ${nameOf(runner)} 태그업 득점`;
+          }
+        } else if (state.bases[1]) {
+          // 2루 주자는 3루까지 태그업 - 3루보다는 덜 확실하다.
+          if (Math.random() < 0.35) {
+            const runner = state.bases[1]!;
+            const bases = state.bases.slice() as Bases;
+            bases[1] = null;
+            bases[2] = runner;
+            state.bases = bases;
+            label = `뜬공 아웃 - ${nameOf(runner)} 태그업 3루 진루`;
+          }
+        }
+      }
+      break;
+    }
     case 'G': {
       // 1루가 비어 있고 2·3루에 주자가 있을 때, 8% 확률로 타구가 주자를 맞힌다.
       const canHitRunner = !state.bases[0] && (state.bases[1] || state.bases[2]);
@@ -358,6 +386,30 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
         label = `타구에 맞은 ${nameOf(hitRunner)} 아웃 (${baseName}), 타자는 1루 출루`;
       } else {
         outsAdded = 1;
+        // 이미 2아웃이면 진루타로 벌 시간이 없다 (아웃되는 순간 이닝 종료).
+        if (state.outs < 2) {
+          if (state.bases[2]) {
+            // 3루 주자 - 우익 방향 땅볼 등으로 득점하는 "진루타".
+            if (Math.random() < 0.55) {
+              const runner = state.bases[2]!;
+              const bases = state.bases.slice() as Bases;
+              bases[2] = null;
+              state.bases = bases;
+              runs = 1;
+              label = `진루타 - ${nameOf(runner)} 득점 (땅볼)`;
+            }
+          } else if (state.bases[1] && !state.bases[0]) {
+            // 1루가 비어 있어 포스아웃이 아닐 때만, 2루 주자가 3루까지 갈 여지가 있다.
+            if (Math.random() < 0.3) {
+              const runner = state.bases[1]!;
+              const bases = state.bases.slice() as Bases;
+              bases[1] = null;
+              bases[2] = runner;
+              state.bases = bases;
+              label = `진루타 - ${nameOf(runner)} 3루 진루 (땅볼)`;
+            }
+          }
+        }
       }
       break;
     }
