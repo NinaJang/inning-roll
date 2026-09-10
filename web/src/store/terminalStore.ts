@@ -284,6 +284,30 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     print(renderBoard(game));
   }
 
+  // 1인용 전용: 내 팀을 제외한 나머지 중에서 상대(CPU) 팀을 무작위로 뽑는다.
+  function runOpponentDraw(myTeam: Team, n: number) {
+    const pool = TEAM_LIST.filter((t) => t.id !== myTeam.id);
+    print([[seg('🎯 상대팀(CPU)을 정하는 중...', COLOR.system)]]);
+    set({ isAnimating: true });
+    let frame = 0;
+    const tick = () => {
+      frame += 1;
+      if (frame >= DRAW_FRAMES) {
+        const cpuTeam = pool[Math.floor(Math.random() * pool.length)];
+        replaceLastLine([seg('🎯 상대팀 확정 - '), teamSeg(cpuTeam.name)]);
+        set({ isAnimating: false });
+        runHomeAwayDraw(myTeam, cpuTeam, n);
+        return;
+      }
+      const guess = pool[Math.floor(Math.random() * pool.length)];
+      replaceLastLine([seg('🎯 '), teamSeg(guess.name), seg(' ...?', COLOR.dim)]);
+      const t = window.setTimeout(tick, DRAW_FRAME_MS);
+      set({ autoTimer: t });
+    };
+    const t = window.setTimeout(tick, DRAW_FRAME_MS);
+    set({ autoTimer: t });
+  }
+
   // 1인용 전용: 코인토스처럼 두 팀 이름을 번갈아 보여주다가 무작위로 원정/홈을 정한다.
   function runHomeAwayDraw(myTeam: Team, cpuTeam: Team, n: number) {
     const myIsAway = Math.random() < 0.5;
@@ -355,11 +379,15 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         }
         const { controlMode } = get();
         if (mode === 'pick-away') {
-          set({ awayId: TEAM_LIST[idx].id, mode: 'pick-home' });
-          print(teamListPrompt(
-            controlMode === 'solo' ? '상대팀(CPU)을 선택하세요.' : '홈팀을 선택하세요.',
-            `번호를 입력하세요 (1-${TEAM_LIST.length})`,
-          ));
+          set({ awayId: TEAM_LIST[idx].id });
+          if (controlMode === 'solo') {
+            // 1인용은 상대팀(CPU)도 직접 안 고르고 나중에 랜덤으로 뽑으므로 바로 이닝 수로 넘어간다.
+            set({ mode: 'pick-innings' });
+            print([[], plain('이닝 수를 입력하세요 (3 / 5 / 7 / 9, 그냥 Enter면 9)')]);
+          } else {
+            set({ mode: 'pick-home' });
+            print(teamListPrompt('홈팀을 선택하세요.', `번호를 입력하세요 (1-${TEAM_LIST.length})`));
+          }
         } else {
           set({ homeId: TEAM_LIST[idx].id, mode: 'pick-innings' });
           print([[], plain('이닝 수를 입력하세요 (3 / 5 / 7 / 9, 그냥 Enter면 9)')]);
@@ -375,11 +403,11 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
           return;
         }
         const teamA = TEAM_LIST.find((t) => t.id === get().awayId)!;
-        const teamB = TEAM_LIST.find((t) => t.id === get().homeId)!;
         if (get().controlMode === 'solo') {
-          // teamA = 내가 고른 팀, teamB = CPU 팀 - 원정/홈은 코인토스로 정한다.
-          runHomeAwayDraw(teamA, teamB, n);
+          // teamA = 내가 고른 팀 - 상대(CPU)와 원정/홈 모두 이제부터 랜덤으로 정한다.
+          runOpponentDraw(teamA, n);
         } else {
+          const teamB = TEAM_LIST.find((t) => t.id === get().homeId)!;
           beginGame(teamA, teamB, n);
         }
         return;
