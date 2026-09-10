@@ -1,7 +1,7 @@
 import { SPECIALTIES } from './teams';
 import type {
   Bases, GameState, OutcomeCode, PendingModifier, Player,
-  PlayCode, PlayEvent, StateSnapshot, StrategyResult, Team, TeamSide,
+  PlayCode, PlayEvent, PlayEventMeta, StateSnapshot, StrategyResult, Team, TeamSide,
 } from './types';
 
 // 실제 야구는 타석의 약 65~68%가 아웃으로 끝난다. 2d6의 확률이 높은 중앙값
@@ -24,7 +24,7 @@ export const OUTCOME_LABELS: Record<string, string> = {
 };
 
 // 비디오 판독 대상: 세이프/아웃이 갈리는 판정과 홈런-파울(뜬공) 경계만 리뷰 가능.
-const REVIEWABLE_CODES = new Set<PlayCode>(['SB', 'CS', 'PO', 'HR', 'F']);
+const REVIEWABLE_CODES = new Set<PlayCode>(['SB', 'CS', 'PO', 'HR', 'F', 'TAG_UP', 'TAG_OUT']);
 
 export function rollDice() {
   const d1 = 1 + Math.floor(Math.random() * 6);
@@ -99,8 +99,8 @@ export function isReviewable(code: PlayCode): boolean {
 
 // 판정을 누가 다툴 수 있는지: 아웃/뜬공은 공격팀이, 도루성공/홈런은 수비팀이 챌린지한다.
 export function challengeSide(event: PlayEvent): TeamSide | null {
-  if (event.code === 'CS' || event.code === 'PO' || event.code === 'F') return event.team;
-  if (event.code === 'SB' || event.code === 'HR') return event.team === 'away' ? 'home' : 'away';
+  if (event.code === 'CS' || event.code === 'PO' || event.code === 'F' || event.code === 'TAG_OUT') return event.team;
+  if (event.code === 'SB' || event.code === 'HR' || event.code === 'TAG_UP') return event.team === 'away' ? 'home' : 'away';
   return null;
 }
 
@@ -204,6 +204,33 @@ function applyStealOutcome(state: GameState, fromIdx: number, runner: Player, su
   state.bases = bases;
   state.outs += 1;
   return { code: 'CS' as const, label: `도루 실패 - ${nameOf(runner)} 아웃 (${toName})` };
+}
+
+// 뜬공/땅볼에서 주자가 다음 베이스(3루 또는 홈)로 태그업/진루를 시도한 결과를 적용한다.
+// 자연 발생, 그리고 챌린지로 판정이 뒤집힌 경우까지 이 함수 하나로 처리한다.
+// fromIdx=1(2루)이면 성공 시 3루로, fromIdx=2(3루)이면 성공 시 득점한다.
+// 점수는 이 함수가 state.score에 직접 반영하지 않는다 - 호출부가 반환된 runs로 처리한다
+// (applyStealOutcome과 마찬가지로 이 파일의 다른 득점 헬퍼들과 일관된 방식).
+function applyTagUpOutcome(state: GameState, fromIdx: number, runner: Player, success: boolean, flavor: 'fly' | 'ground') {
+  const bases = state.bases.slice() as Bases;
+  bases[fromIdx] = null;
+  if (!success) {
+    state.bases = bases;
+    state.outs += 1;
+    const toName = fromIdx === 2 ? '홈' : '3루';
+    return { code: 'TAG_OUT' as const, label: `태그아웃 - ${nameOf(runner)} ${toName}에서 아웃`, runs: 0 };
+  }
+  let runs = 0;
+  if (fromIdx === 2) {
+    runs = 1;
+  } else {
+    bases[2] = runner;
+  }
+  state.bases = bases;
+  const label = fromIdx === 2
+    ? (flavor === 'fly' ? `희생플라이 - ${nameOf(runner)} 태그업 득점` : `진루타 - ${nameOf(runner)} 득점`)
+    : (flavor === 'fly' ? `${nameOf(runner)} 태그업 3루 진루` : `진루타 - ${nameOf(runner)} 3루 진루`);
+  return { code: 'TAG_UP' as const, label, runs };
 }
 
 function makeEvent(state: GameState, extra: Partial<PlayEvent> & { code: PlayCode; label: string }): PlayEvent {
@@ -345,6 +372,10 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
   let label = OUTCOME_LABELS[code] || code;
   let runs = 0;
   let outsAdded = 0;
+  // 태그업/진루타 시도가 걸리면, 이 판정 전체의 code/meta를 리뷰 가능한 TAG_UP/TAG_OUT으로 덮어쓴다
+  // (타자 본인의 뜬공/땅볼 아웃이 아니라 주자의 세이프/아웃 여부가 챌린지 대상이 되도록).
+  let overrideCode: PlayCode | undefined;
+  let overrideMeta: PlayEventMeta | undefined;
 
   switch (code) {
     case 'K':
@@ -354,27 +385,22 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
       outsAdded = 1;
       // 이미 2아웃이면 이 아웃으로 이닝이 끝나므로, 잡히는 순간 득점 기회 자체가 사라진다
       // (실제 야구에서도 3아웃째 태그업은 득점으로 인정되지 않는다).
-      if (state.outs < 2) {
+      if (!opts.noFlavor && state.outs < 2) {
         if (state.bases[2]) {
-          // 3루 주자 태그업 - 웬만큼 깊은 뜬공이면 대부분 득점한다 (희생플라이).
-          if (Math.random() < 0.75) {
-            const runner = state.bases[2]!;
-            const bases = state.bases.slice() as Bases;
-            bases[2] = null;
-            state.bases = bases;
-            runs = 1;
-            label = `희생플라이 - ${nameOf(runner)} 태그업 득점`;
-          }
+          // 3루 주자 태그업 - 웬만큼 깊은 뜬공이면 대부분 득점한다 (희생플라이). 실패하면 홈에서 태그아웃.
+          const runner = state.bases[2]!;
+          const result = applyTagUpOutcome(state, 2, runner, Math.random() < 0.75, 'fly');
+          label = result.label;
+          runs = result.runs;
+          overrideCode = result.code;
+          overrideMeta = { runner, fromIdx: 2, flavor: 'fly' };
         } else if (state.bases[1]) {
-          // 2루 주자는 3루까지 태그업 - 3루보다는 덜 확실하다.
-          if (Math.random() < 0.35) {
-            const runner = state.bases[1]!;
-            const bases = state.bases.slice() as Bases;
-            bases[1] = null;
-            bases[2] = runner;
-            state.bases = bases;
-            label = `뜬공 아웃 - ${nameOf(runner)} 태그업 3루 진루`;
-          }
+          // 2루 주자는 3루까지 태그업 - 3루보다는 덜 확실하다. 실패하면 3루에서 태그아웃.
+          const runner = state.bases[1]!;
+          const result = applyTagUpOutcome(state, 1, runner, Math.random() < 0.35, 'fly');
+          label = result.label;
+          overrideCode = result.code;
+          overrideMeta = { runner, fromIdx: 1, flavor: 'fly' };
         }
       }
       break;
@@ -391,27 +417,22 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
           run: () => {
             outsAdded = 1;
             // 이미 2아웃이면 진루타로 벌 시간이 없다 (아웃되는 순간 이닝 종료).
-            if (state.outs < 2) {
+            if (!opts.noFlavor && state.outs < 2) {
               if (state.bases[2]) {
-                // 3루 주자 - 우익 방향 땅볼 등으로 득점하는 "진루타".
-                if (Math.random() < 0.55) {
-                  const runner = state.bases[2]!;
-                  const bases = state.bases.slice() as Bases;
-                  bases[2] = null;
-                  state.bases = bases;
-                  runs = 1;
-                  label = `진루타 - ${nameOf(runner)} 득점 (땅볼)`;
-                }
+                // 3루 주자 - 우익 방향 땅볼 등으로 득점을 시도하는 "진루타". 실패하면 홈에서 태그아웃.
+                const runner = state.bases[2]!;
+                const result = applyTagUpOutcome(state, 2, runner, Math.random() < 0.55, 'ground');
+                label = result.label;
+                runs = result.runs;
+                overrideCode = result.code;
+                overrideMeta = { runner, fromIdx: 2, flavor: 'ground' };
               } else if (state.bases[1] && !hasFirst) {
-                // 1루가 비어 있어 포스아웃이 아닐 때만, 2루 주자가 3루까지 갈 여지가 있다.
-                if (Math.random() < 0.3) {
-                  const runner = state.bases[1]!;
-                  const bases = state.bases.slice() as Bases;
-                  bases[1] = null;
-                  bases[2] = runner;
-                  state.bases = bases;
-                  label = `진루타 - ${nameOf(runner)} 3루 진루 (땅볼)`;
-                }
+                // 1루가 비어 있어 포스아웃이 아닐 때만, 2루 주자가 3루까지 시도. 실패하면 3루에서 태그아웃.
+                const runner = state.bases[1]!;
+                const result = applyTagUpOutcome(state, 1, runner, Math.random() < 0.3, 'ground');
+                label = result.label;
+                overrideCode = result.code;
+                overrideMeta = { runner, fromIdx: 1, flavor: 'ground' };
               }
             }
           },
@@ -549,7 +570,7 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
     }
   }
 
-  return { label, runs, outsAdded };
+  return { label, runs, outsAdded, code: overrideCode, meta: overrideMeta };
 }
 
 // 부스트형 감독 지시(강공/선구안/시프트/마운드방문)를 다음 타석 결과에 1회 반영한다.
@@ -609,7 +630,8 @@ export function resolveBatterRoll(state: GameState): PlayEvent {
     state.pendingModifier = null;
   }
 
-  const { label, runs, outsAdded } = applyBatterOutcome(state, code, batter);
+  const { label, runs, outsAdded, code: overrideCode, meta } = applyBatterOutcome(state, code, batter);
+  const finalCode = overrideCode ?? code;
   const finalLabel = feat ? `${label} (${feat} 발동!)` : label;
   const pitchCount = generatePitchCount(code);
 
@@ -618,7 +640,7 @@ export function resolveBatterRoll(state: GameState): PlayEvent {
   advanceBattingIndex(state, team);
 
   return finalizeEvent(state, makeEvent(state, {
-    d1, d2, sum, code, label: finalLabel, runs, batterName: nameOf(batter), pitchCount, snapshot,
+    d1, d2, sum, code: finalCode, label: finalLabel, runs, batterName: nameOf(batter), pitchCount, snapshot, meta,
   }));
 }
 
@@ -650,6 +672,19 @@ export function attemptChallenge(state: GameState, event: PlayEvent): { overturn
     advanceBattingIndex(state, battingTeam(state));
     newEvent = finalizeEvent(state, makeEvent(state, {
       code: wantCode, label: `[판독 번복] ${label}`, runs, batterName: nameOf(batter), isReview: true,
+    }));
+  } else if (event.code === 'TAG_UP' || event.code === 'TAG_OUT') {
+    const { runner, fromIdx, flavor } = event.meta!;
+    const batter = getCurrentBatter(state);
+    const wantSuccess = event.code === 'TAG_OUT'; // 원래 실패였으면 성공으로, 성공이었으면 실패로 뒤집는다.
+    // 타자 본인의 뜬공/땅볼 아웃은 리뷰 대상이 아니므로(주자의 세이프/아웃만 다툰다) 그대로 되살린다.
+    state.outs += 1;
+    const result = applyTagUpOutcome(state, fromIdx!, runner!, wantSuccess, flavor!);
+    state.score[battingTeam(state)] += result.runs;
+    advanceBattingIndex(state, battingTeam(state));
+    newEvent = finalizeEvent(state, makeEvent(state, {
+      code: result.code, label: `[판독 번복] ${result.label}`, runs: result.runs, batterName: nameOf(batter),
+      isChaos: true, isReview: true, meta: { runner, fromIdx, flavor },
     }));
   }
 

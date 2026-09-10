@@ -7,7 +7,7 @@ export type OutcomeCode =
   | 'DP' | '2B' | 'F' | 'G' | 'K' | '1B' | 'BB' | '3B' | 'HR'
   | 'SAC_OK' | 'SAC_FAIL';
 
-export type ChaosCode = 'WP' | 'BK' | 'PO' | 'SB' | 'CS' | 'PO_SAFE' | 'PO_MISS';
+export type ChaosCode = 'WP' | 'BK' | 'PO' | 'SB' | 'CS' | 'PO_SAFE' | 'PO_MISS' | 'TAG_UP' | 'TAG_OUT';
 
 export type PlayCode = OutcomeCode | ChaosCode;
 
@@ -85,6 +85,7 @@ export interface PlayEventMeta {
   fromIdx?: number;
   idx?: number;
   batter?: Player;
+  flavor?: 'fly' | 'ground';
 }
 
 export interface PlayEvent {
