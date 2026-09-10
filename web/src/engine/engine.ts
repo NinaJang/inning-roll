@@ -365,6 +365,8 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
       const { bases, extraOut } = applyDoublePlay(state.bases);
       state.bases = bases;
       outsAdded = extraOut ? 2 : 1;
+      // 1루 주자가 없으면 병살이 성립하지 않는다 - 그냥 타자만 아웃되는 땅볼로 표기한다.
+      if (!extraOut) label = OUTCOME_LABELS.G;
       break;
     }
     case 'BB': {
