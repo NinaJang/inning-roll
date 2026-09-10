@@ -39,6 +39,12 @@ export default function TerminalScreen() {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // 터치(모바일) 기기에서는 입력창에 포커스가 갈 때마다 가상 키보드가 튀어나와 화면을
+  // 가리고 조작을 방해한다. 버튼만으로도 전부 조작 가능하니, 이런 기기에서는 자동
+  // 포커스를 아예 주지 않는다 (직접 탭하면 그때는 정상적으로 키보드가 뜬다).
+  const [isCoarsePointer] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
+  );
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -47,15 +53,15 @@ export default function TerminalScreen() {
   // 버튼 클릭이나 애니메이션(입력창 임시 비활성화) 때문에 포커스가 빠지면
   // 매번 다시 클릭해야 Enter가 먹는 문제가 있었다 - 상태가 바뀔 때마다 자동으로 되돌려준다.
   useEffect(() => {
-    if (mode !== 'over' && !isAnimating) {
+    if (mode !== 'over' && !isAnimating && !isCoarsePointer) {
       inputRef.current?.focus();
     }
-  }, [mode, isAnimating, lines.length]);
+  }, [mode, isAnimating, lines.length, isCoarsePointer]);
 
   function send(value: string) {
     submit(value);
     setInput('');
-    inputRef.current?.focus();
+    if (!isCoarsePointer) inputRef.current?.focus();
   }
 
   const promptLabel = mode === 'pick-players' ? '모드 #'
@@ -120,7 +126,7 @@ export default function TerminalScreen() {
             onKeyDown={(e) => { if (e.key === 'Enter') send(input); }}
             disabled={mode === 'over' || isAnimating}
             className="flex-1 bg-transparent text-neutral-100 text-sm outline-none disabled:opacity-40"
-            autoFocus
+            autoFocus={!isCoarsePointer}
             spellCheck={false}
           />
         </div>
