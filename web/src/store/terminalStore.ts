@@ -8,7 +8,8 @@ import {
   renderPlay, renderTeamList, seg, teamSeg,
 } from '../terminal/render';
 
-export type Mode = 'pick-away' | 'pick-home' | 'pick-innings' | 'command' | 'challenge' | 'over';
+export type ControlMode = 'solo' | 'local';
+export type Mode = 'pick-players' | 'pick-away' | 'pick-home' | 'pick-innings' | 'command' | 'challenge' | 'over';
 type PlayYield = Extract<TurnYield, { kind: 'play' }>;
 
 interface PendingChallenge {
@@ -19,6 +20,8 @@ interface PendingChallenge {
 interface TerminalStore {
   lines: Line[];
   mode: Mode;
+  controlMode: ControlMode | null;
+  humanSide: TeamSide | null; // 1인용일 때만 의미 있음 (항상 원정팀 = 나)
   awayId: string | null;
   homeId: string | null;
   game: GameState | null;
@@ -41,11 +44,15 @@ const BAR_LEN = 5;
 function welcomeLines(): Line[] {
   return [
     plain('⚾ 이닝롤 — 터미널 모드'),
-    plain('팀을 골라 경기를 시작합니다.'),
-    ...renderTeamList(),
+    plain('  1. 1인용 (CPU 상대)'),
+    plain('  2. 2인용 (한 화면에서 로컬 대전)'),
     [],
-    plain(`원정팀 번호를 입력하세요 (1-${TEAM_LIST.length})`),
+    plain('번호를 입력하세요 (1-2)'),
   ];
+}
+
+function teamListPrompt(introLine: string, promptLine: string): Line[] {
+  return [[], plain(introLine), ...renderTeamList(), [], plain(promptLine)];
 }
 
 function echo(cmd: string): Line {
@@ -123,6 +130,13 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     set({ game: { ...get().game! } });
 
     if (y.needsChallenge && y.side) {
+      const { controlMode, humanSide } = get();
+      // 1인용에서 CPU 쪽이 도전할 판정이면 사람에게 묻지 않고 그냥 넘어간다 (CPU는 챌린지를 쓰지 않음).
+      if (controlMode === 'solo' && y.side !== humanSide) {
+        print([[seg('📺 CPU는 이 판정에 도전하지 않습니다.', COLOR.dim)]]);
+        drive(get().turnGen!.next(false));
+        return;
+      }
       const teamName = get().game!.teamNames[y.side];
       const remaining = get().game!.challenges[y.side];
       print([[
@@ -222,8 +236,16 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     }
     if (cmd === 'o' || cmd === 'd') {
       const game = get().game!;
+      const { controlMode, humanSide } = get();
       const side = cmd === 'o' ? 'offense' : 'defense';
       const team = cmd === 'o' ? battingTeam(game) : fieldingTeam(game);
+
+      // 1인용에서는 CPU 쪽 전략을 사람이 대신 걸 수 없다 (CPU는 전략을 쓰지 않음).
+      if (controlMode === 'solo' && team !== humanSide) {
+        print([[seg('CPU는 감독 전략을 사용하지 않습니다.', COLOR.dim)]]);
+        print(renderBoard(game));
+        return;
+      }
       if (game.strategyUses[team] <= 0) {
         print([[teamSeg(game.teamNames[team]), seg('은(는) 전략 사용 횟수를 모두 소진했습니다.', COLOR.danger)]]);
         print(renderBoard(game));
@@ -239,7 +261,9 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
 
   return {
     lines: welcomeLines(),
-    mode: 'pick-away',
+    mode: 'pick-players',
+    controlMode: null,
+    humanSide: null,
     awayId: null,
     homeId: null,
     game: null,
@@ -254,6 +278,21 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       const mode = get().mode;
       const cmd = raw.trim();
 
+      if (mode === 'pick-players') {
+        print([echo(cmd)]);
+        if (cmd !== '1' && cmd !== '2') {
+          print([[seg('1 또는 2를 입력하세요.', COLOR.danger)]]);
+          return;
+        }
+        const controlMode: ControlMode = cmd === '1' ? 'solo' : 'local';
+        set({ controlMode, humanSide: controlMode === 'solo' ? 'away' : null, mode: 'pick-away' });
+        print(teamListPrompt(
+          controlMode === 'solo' ? '당신의 팀(원정)을 선택하세요.' : '원정팀을 선택하세요.',
+          `번호를 입력하세요 (1-${TEAM_LIST.length})`,
+        ));
+        return;
+      }
+
       if (mode === 'pick-away' || mode === 'pick-home') {
         const idx = parseInt(cmd, 10) - 1;
         print([echo(cmd)]);
@@ -261,14 +300,16 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
           print([[seg('올바른 번호를 입력하세요.', COLOR.danger)]]);
           return;
         }
+        const { controlMode } = get();
         if (mode === 'pick-away') {
-          set({ awayId: TEAM_LIST[idx].id });
-          print([[], plain('홈팀을 선택하세요.'), ...renderTeamList(), [], plain(`홈팀 번호를 입력하세요 (1-${TEAM_LIST.length})`)]);
-          set({ mode: 'pick-home' });
+          set({ awayId: TEAM_LIST[idx].id, mode: 'pick-home' });
+          print(teamListPrompt(
+            controlMode === 'solo' ? '상대팀(홈, CPU)을 선택하세요.' : '홈팀을 선택하세요.',
+            `번호를 입력하세요 (1-${TEAM_LIST.length})`,
+          ));
         } else {
-          set({ homeId: TEAM_LIST[idx].id });
+          set({ homeId: TEAM_LIST[idx].id, mode: 'pick-innings' });
           print([[], plain('이닝 수를 입력하세요 (3 / 5 / 7 / 9, 그냥 Enter면 9)')]);
-          set({ mode: 'pick-innings' });
         }
         return;
       }
@@ -283,11 +324,20 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         const away = TEAM_LIST.find((t) => t.id === get().awayId)!;
         const home = TEAM_LIST.find((t) => t.id === get().homeId)!;
         const game = createGame(away, home, n);
+        const { controlMode } = get();
         set({ game, mode: 'command' });
         print([
           [],
-          [teamSeg(away.name), seg(' (원정) vs '), teamSeg(home.name), seg(` (홈) — ${n}이닝 경기 시작.`)],
-          plain('명령어: Enter=진행 / o=공격 전략 / d=수비 전략 / q=종료'),
+          [
+            teamSeg(away.name), seg(controlMode === 'solo' ? ' (원정, 나)' : ' (원정)'), seg(' vs '),
+            teamSeg(home.name), seg(controlMode === 'solo' ? ' (홈, CPU)' : ' (홈)'),
+            seg(` — ${n}이닝 경기 시작.`),
+          ],
+          plain(
+            controlMode === 'solo'
+              ? '명령어: Enter=진행 / o 또는 d=내 팀 차례일 때 전략 / q=종료'
+              : '명령어: Enter=진행 / o=공격 전략 / d=수비 전략 / q=종료',
+          ),
         ]);
         print(renderBoard(game));
         return;
@@ -318,7 +368,9 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       clearAutoTimer();
       set({
         lines: welcomeLines(),
-        mode: 'pick-away',
+        mode: 'pick-players',
+        controlMode: null,
+        humanSide: null,
         awayId: null,
         homeId: null,
         game: null,

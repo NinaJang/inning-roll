@@ -27,6 +27,8 @@ function QuickButton({ label, onClick, disabled, tone = 'default' }: {
 export default function TerminalScreen() {
   const lines = useTerminalStore((s) => s.lines);
   const mode = useTerminalStore((s) => s.mode);
+  const controlMode = useTerminalStore((s) => s.controlMode);
+  const humanSide = useTerminalStore((s) => s.humanSide);
   const game = useTerminalStore((s) => s.game);
   const fastForward = useTerminalStore((s) => s.fastForward);
   const isAnimating = useTerminalStore((s) => s.isAnimating);
@@ -56,7 +58,8 @@ export default function TerminalScreen() {
     inputRef.current?.focus();
   }
 
-  const promptLabel = mode === 'pick-away' ? '원정팀 #'
+  const promptLabel = mode === 'pick-players' ? '모드 #'
+    : mode === 'pick-away' ? '원정팀 #'
     : mode === 'pick-home' ? '홈팀 #'
     : mode === 'pick-innings' ? '이닝 수'
     : mode === 'challenge' ? 'y/n'
@@ -65,6 +68,9 @@ export default function TerminalScreen() {
 
   const offenseTeam = game ? (game.half === 'top' ? 'away' : 'home') : null;
   const defenseTeam = game ? (game.half === 'top' ? 'home' : 'away') : null;
+  // 1인용에서는 CPU 쪽 전략 버튼은 아예 숨긴다 (CPU는 전략을 쓰지 않으므로).
+  const showOffenseBtn = controlMode !== 'solo' || offenseTeam === humanSide;
+  const showDefenseBtn = controlMode !== 'solo' || defenseTeam === humanSide;
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-3">
@@ -116,16 +122,20 @@ export default function TerminalScreen() {
           {mode === 'command' && game && (
             <>
               <QuickButton label="Enter (진행)" tone="accent" onClick={() => send('')} disabled={isAnimating} />
-              <QuickButton
-                label={`o 공격 전략 (${offenseTeam ? game.strategyUses[offenseTeam] : 0})`}
-                onClick={() => send('o')}
-                disabled={isAnimating || !offenseTeam || game.strategyUses[offenseTeam] <= 0}
-              />
-              <QuickButton
-                label={`d 수비 전략 (${defenseTeam ? game.strategyUses[defenseTeam] : 0})`}
-                onClick={() => send('d')}
-                disabled={isAnimating || !defenseTeam || game.strategyUses[defenseTeam] <= 0}
-              />
+              {showOffenseBtn && (
+                <QuickButton
+                  label={`o 공격 전략 (${offenseTeam ? game.strategyUses[offenseTeam] : 0})`}
+                  onClick={() => send('o')}
+                  disabled={isAnimating || !offenseTeam || game.strategyUses[offenseTeam] <= 0}
+                />
+              )}
+              {showDefenseBtn && (
+                <QuickButton
+                  label={`d 수비 전략 (${defenseTeam ? game.strategyUses[defenseTeam] : 0})`}
+                  onClick={() => send('d')}
+                  disabled={isAnimating || !defenseTeam || game.strategyUses[defenseTeam] <= 0}
+                />
+              )}
               <QuickButton label="q (종료)" tone="warn" onClick={() => send('q')} disabled={isAnimating} />
             </>
           )}
@@ -133,6 +143,12 @@ export default function TerminalScreen() {
             <>
               <QuickButton label="y (도전한다)" tone="accent" onClick={() => send('y')} disabled={isAnimating} />
               <QuickButton label="n (그냥 진행)" onClick={() => send('n')} disabled={isAnimating} />
+            </>
+          )}
+          {mode === 'pick-players' && (
+            <>
+              <QuickButton label="1 (1인용)" tone="accent" onClick={() => send('1')} />
+              <QuickButton label="2 (2인용)" onClick={() => send('2')} />
             </>
           )}
           {(mode === 'pick-away' || mode === 'pick-home') && (
