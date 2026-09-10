@@ -167,6 +167,14 @@ function applyDoublePlay(bases: Bases) {
   return { bases: next, extraOut: true };
 }
 
+// 1루 주자를 2루에서 포스아웃시키고 타자를 1루에 세운다 (2·3루 주자는 그대로 유지).
+// 야수의 선택과, 병살이 실패해서 한 명만 잡히는 경우가 공유하는 모양이다.
+function applyForceOutAtSecond(bases: Bases, batter: Player) {
+  const next = bases.slice() as Bases;
+  next[0] = batter;
+  return { bases: next };
+}
+
 function applySacrifice(bases: Bases) {
   let runs = 0;
   const next: Bases = [null, null, null];
@@ -372,53 +380,124 @@ function applyBatterOutcome(state: GameState, code: PlayCode, batter: Player, op
       break;
     }
     case 'G': {
-      // 1루가 비어 있고 2·3루에 주자가 있을 때, 8% 확률로 타구가 주자를 맞힌다.
-      const canHitRunner = !state.bases[0] && (state.bases[1] || state.bases[2]);
-      if (!opts.noFlavor && canHitRunner && Math.random() < 0.08) {
-        const idx = state.bases[2] ? 2 : 1;
-        const hitRunner = state.bases[idx]!;
-        const baseName = idx === 2 ? '3루' : '2루';
-        const bases = state.bases.slice() as Bases;
-        bases[idx] = null;
-        bases[0] = batter;
-        state.bases = bases;
-        outsAdded = 1;
-        label = `타구에 맞은 ${nameOf(hitRunner)} 아웃 (${baseName}), 타자는 1루 출루`;
-      } else {
-        outsAdded = 1;
-        // 이미 2아웃이면 진루타로 벌 시간이 없다 (아웃되는 순간 이닝 종료).
-        if (state.outs < 2) {
-          if (state.bases[2]) {
-            // 3루 주자 - 우익 방향 땅볼 등으로 득점하는 "진루타".
-            if (Math.random() < 0.55) {
-              const runner = state.bases[2]!;
-              const bases = state.bases.slice() as Bases;
-              bases[2] = null;
-              state.bases = bases;
-              runs = 1;
-              label = `진루타 - ${nameOf(runner)} 득점 (땅볼)`;
+      const hasFirst = Boolean(state.bases[0]);
+      const hasRunnerToHit = !hasFirst && (state.bases[1] || state.bases[2]);
+
+      // 땅볼 하나에도 다양한 수비 상황이 있을 수 있다 - 가능한 갈래들을 가중치로 늘어놓고
+      // 그 중 하나를 뽑는다 (tryChaosEvent의 누적 확률 롤과 같은 방식).
+      const branches: { weight: number; run: () => void }[] = [
+        {
+          weight: 68,
+          run: () => {
+            outsAdded = 1;
+            // 이미 2아웃이면 진루타로 벌 시간이 없다 (아웃되는 순간 이닝 종료).
+            if (state.outs < 2) {
+              if (state.bases[2]) {
+                // 3루 주자 - 우익 방향 땅볼 등으로 득점하는 "진루타".
+                if (Math.random() < 0.55) {
+                  const runner = state.bases[2]!;
+                  const bases = state.bases.slice() as Bases;
+                  bases[2] = null;
+                  state.bases = bases;
+                  runs = 1;
+                  label = `진루타 - ${nameOf(runner)} 득점 (땅볼)`;
+                }
+              } else if (state.bases[1] && !hasFirst) {
+                // 1루가 비어 있어 포스아웃이 아닐 때만, 2루 주자가 3루까지 갈 여지가 있다.
+                if (Math.random() < 0.3) {
+                  const runner = state.bases[1]!;
+                  const bases = state.bases.slice() as Bases;
+                  bases[1] = null;
+                  bases[2] = runner;
+                  state.bases = bases;
+                  label = `진루타 - ${nameOf(runner)} 3루 진루 (땅볼)`;
+                }
+              }
             }
-          } else if (state.bases[1] && !state.bases[0]) {
-            // 1루가 비어 있어 포스아웃이 아닐 때만, 2루 주자가 3루까지 갈 여지가 있다.
-            if (Math.random() < 0.3) {
-              const runner = state.bases[1]!;
-              const bases = state.bases.slice() as Bases;
-              bases[1] = null;
-              bases[2] = runner;
-              state.bases = bases;
-              label = `진루타 - ${nameOf(runner)} 3루 진루 (땅볼)`;
-            }
-          }
+          },
+        },
+        {
+          weight: 8,
+          run: () => {
+            // 내야안타: 수비가 잡고도 1루에서 타자를 못 잡는다. 볼넷과 같은 강제 진루만 일어난다.
+            const { bases, runs: r } = applyWalk(state.bases, batter);
+            state.bases = bases;
+            runs = r;
+            outsAdded = 0;
+            label = '내야안타 - 타자 1루 출루';
+          },
+        },
+        {
+          weight: 5,
+          run: () => {
+            // 수비 실책: 70%는 단순 실책(안타급), 30%는 송구까지 빠지는 실책(2루타급).
+            const throwing = Math.random() < 0.3;
+            const { bases, runs: r } = applyAdvance(state.bases, throwing ? 2 : 1, batter);
+            state.bases = bases;
+            runs = r;
+            outsAdded = 0;
+            label = throwing
+              ? '송구 실책 - 타자 2루 출루, 주자 대거 진루'
+              : '수비 실책 - 타자 1루 출루, 주자 진루';
+          },
+        },
+      ];
+      if (!opts.noFlavor && hasRunnerToHit) {
+        branches.push({
+          weight: 8,
+          run: () => {
+            // 1루가 비어 있고 2·3루에 주자가 있을 때, 타구가 주자를 맞힌다.
+            const idx = state.bases[2] ? 2 : 1;
+            const hitRunner = state.bases[idx]!;
+            const baseName = idx === 2 ? '3루' : '2루';
+            const bases = state.bases.slice() as Bases;
+            bases[idx] = null;
+            bases[0] = batter;
+            state.bases = bases;
+            outsAdded = 1;
+            label = `타구에 맞은 ${nameOf(hitRunner)} 아웃 (${baseName}), 타자는 1루 출루`;
+          },
+        });
+      }
+      if (hasFirst) {
+        branches.push({
+          weight: 12,
+          run: () => {
+            // 야수의 선택: 타자 대신 1루 주자를 2루에서 포스아웃시킨다.
+            const runner = state.bases[0]!;
+            const { bases } = applyForceOutAtSecond(state.bases, batter);
+            state.bases = bases;
+            outsAdded = 1;
+            label = `야수의 선택 - ${nameOf(runner)} 2루 포스아웃, 타자는 1루 출루`;
+          },
+        });
+      }
+
+      let roll = Math.random() * branches.reduce((sum, b) => sum + b.weight, 0);
+      for (const branch of branches) {
+        if (roll < branch.weight) {
+          branch.run();
+          break;
         }
+        roll -= branch.weight;
       }
       break;
     }
     case 'DP': {
       const { bases, extraOut } = applyDoublePlay(state.bases);
-      state.bases = bases;
-      outsAdded = extraOut ? 2 : 1;
-      // 1루 주자가 없으면 병살이 성립하지 않는다 - 그냥 타자만 아웃되는 땅볼로 표기한다.
-      if (!extraOut) label = OUTCOME_LABELS.G;
+      // 진짜 병살 상황(1루 주자 있음)일 때만, 12% 확률로 두 번째 송구가 빠져서 하나만 잡는다.
+      if (extraOut && Math.random() < 0.12) {
+        const runner = state.bases[0]!;
+        const { bases: b2 } = applyForceOutAtSecond(state.bases, batter);
+        state.bases = b2;
+        outsAdded = 1;
+        label = `병살 시도 실패 - ${nameOf(runner)} 2루 포스아웃, 타자는 1루 출루`;
+      } else {
+        state.bases = bases;
+        outsAdded = extraOut ? 2 : 1;
+        // 1루 주자가 없으면 병살이 성립하지 않는다 - 그냥 타자만 아웃되는 땅볼로 표기한다.
+        if (!extraOut) label = OUTCOME_LABELS.G;
+      }
       break;
     }
     case 'BB': {
