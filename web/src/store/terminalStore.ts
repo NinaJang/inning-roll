@@ -125,10 +125,15 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     set({ autoTimer: t });
   }
 
-  function afterPlayPrinted(y: PlayYield) {
-    if (y.play.halfEnded && !y.play.gameOver) {
-      print(renderHalfTransition(y.play, get().game!));
+  // 챌린지로 뒤집힐 수 있는 판정이 아직 남아있지 않은, 확정된 결과에 대해서만
+  // 이닝 전환 문구를 찍는다 (안 그러면 나중에 번복될 수도 있는 아웃을 미리 "종료"로 알리게 된다).
+  function finalizePlay(play: PlayEvent) {
+    if (play.halfEnded && !play.gameOver) {
+      print(renderHalfTransition(play, get().game!));
     }
+  }
+
+  function afterPlayPrinted(y: PlayYield) {
     set({ game: { ...get().game! } });
 
     if (y.needsChallenge && y.side) {
@@ -136,6 +141,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       // 1인용에서 CPU 쪽이 도전할 판정이면 사람에게 묻지 않고 그냥 넘어간다 (CPU는 챌린지를 쓰지 않음).
       if (controlMode === 'solo' && y.side !== humanSide) {
         print([[seg('📺 CPU는 이 판정에 도전하지 않습니다.', COLOR.dim)]]);
+        finalizePlay(y.play);
         drive(get().turnGen!.next(false));
         return;
       }
@@ -148,6 +154,9 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       set({ pendingChallenge: { play: y.play, side: y.side }, mode: 'challenge' });
       return;
     }
+
+    // 챌린지 대상이 아니었다면 이 판정이 곧 최종 결과다.
+    finalizePlay(y.play);
 
     if (get().fastForward) {
       const t = window.setTimeout(() => drive(get().turnGen!.next(false)), AUTO_DELAY_MS);
@@ -207,6 +216,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     if (!turnGen || !pendingChallenge || !game) return;
 
     if (answer === 'n') {
+      finalizePlay(pendingChallenge.play);
       drive(turnGen.next(false));
       return;
     }
@@ -220,6 +230,11 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         ? seg('번복! (챌린지 횟수 유지)', COLOR.review)
         : seg(`원심 유지 (잔여 ${get().game!.challenges[side]}회)`, COLOR.review),
     ]]);
+    // 원심 유지라면 애초 판정이 그대로 확정된 것이므로 이제야 이닝 전환 문구를 찍는다.
+    // (번복됐다면 새 판정이 drive(result)를 거치며 스스로 확정 여부를 처리한다.)
+    if (!overturned) {
+      finalizePlay(pendingChallenge.play);
+    }
     drive(result);
   }
 
