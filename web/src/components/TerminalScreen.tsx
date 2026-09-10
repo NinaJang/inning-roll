@@ -158,7 +158,7 @@ export default function TerminalScreen() {
               ))}
             </>
           )}
-          {mode === 'pick-innings' && (
+          {mode === 'pick-innings' && !isAnimating && (
             <>
               {[3, 5, 7, 9].map((n) => (
                 <QuickButton key={n} label={String(n)} onClick={() => send(String(n))} />

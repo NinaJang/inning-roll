@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { battingTeam, createGame, fieldingTeam } from '../engine/engine';
 import { runTurn, type TurnYield } from '../engine/turnController';
-import type { GameState, PlayEvent, TeamSide } from '../engine/types';
+import type { GameState, PlayEvent, Team, TeamSide } from '../engine/types';
 import { TEAM_LIST } from '../engine/teams';
 import {
   COLOR, type Line, plain, renderBoard, renderFinish, renderHalfTransition,
@@ -40,6 +40,8 @@ const AUTO_DELAY_MS = 500;
 const ROLL_FRAMES = 4;
 const ROLL_FRAME_MS = 160;
 const BAR_LEN = 5;
+const DRAW_FRAMES = 5;
+const DRAW_FRAME_MS = 180;
 
 function welcomeLines(): Line[] {
   return [
@@ -259,6 +261,56 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     print(renderBoard(get().game!));
   }
 
+  // 실제로 경기를 만들고 시작 배너 + 첫 보드를 찍는다. 원정/홈이 이미 정해진 뒤에 호출된다.
+  function beginGame(away: Team, home: Team, n: number) {
+    const game = createGame(away, home, n);
+    const { controlMode, humanSide } = get();
+    set({ game, mode: 'command' });
+    const awayTag = controlMode === 'solo' ? (humanSide === 'away' ? ' (원정, 나)' : ' (원정, CPU)') : ' (원정)';
+    const homeTag = controlMode === 'solo' ? (humanSide === 'home' ? ' (홈, 나)' : ' (홈, CPU)') : ' (홈)';
+    print([
+      [],
+      [
+        teamSeg(away.name), seg(awayTag), seg(' vs '),
+        teamSeg(home.name), seg(homeTag),
+        seg(` — ${n}이닝 경기 시작.`),
+      ],
+      plain(
+        controlMode === 'solo'
+          ? '명령어: Enter=진행 / o 또는 d=내 팀 차례일 때 전략 / q=종료'
+          : '명령어: Enter=진행 / o=공격 전략 / d=수비 전략 / q=종료',
+      ),
+    ]);
+    print(renderBoard(game));
+  }
+
+  // 1인용 전용: 코인토스처럼 두 팀 이름을 번갈아 보여주다가 무작위로 원정/홈을 정한다.
+  function runHomeAwayDraw(myTeam: Team, cpuTeam: Team, n: number) {
+    const myIsAway = Math.random() < 0.5;
+    print([[seg('🪙 선공/후공을 정하는 중...', COLOR.system)]]);
+    set({ isAnimating: true });
+    let frame = 0;
+    const tick = () => {
+      frame += 1;
+      if (frame >= DRAW_FRAMES) {
+        const away = myIsAway ? myTeam : cpuTeam;
+        const home = myIsAway ? cpuTeam : myTeam;
+        replaceLastLine([
+          seg('🪙 결과 - '), teamSeg(away.name), seg(': 원정  /  '), teamSeg(home.name), seg(': 홈'),
+        ]);
+        set({ isAnimating: false, humanSide: myIsAway ? 'away' : 'home' });
+        beginGame(away, home, n);
+        return;
+      }
+      const guess = Math.random() < 0.5 ? myTeam : cpuTeam;
+      replaceLastLine([seg('🪙 '), teamSeg(guess.name), seg(' 원정...?', COLOR.dim)]);
+      const t = window.setTimeout(tick, DRAW_FRAME_MS);
+      set({ autoTimer: t });
+    };
+    const t = window.setTimeout(tick, DRAW_FRAME_MS);
+    set({ autoTimer: t });
+  }
+
   return {
     lines: welcomeLines(),
     mode: 'pick-players',
@@ -285,9 +337,10 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
           return;
         }
         const controlMode: ControlMode = cmd === '1' ? 'solo' : 'local';
-        set({ controlMode, humanSide: controlMode === 'solo' ? 'away' : null, mode: 'pick-away' });
+        // 1인용은 원정/홈을 나중에 코인토스로 정하므로 아직 humanSide를 알 수 없다.
+        set({ controlMode, humanSide: null, mode: 'pick-away' });
         print(teamListPrompt(
-          controlMode === 'solo' ? '당신의 팀(원정)을 선택하세요.' : '원정팀을 선택하세요.',
+          controlMode === 'solo' ? '당신의 팀을 선택하세요.' : '원정팀을 선택하세요.',
           `번호를 입력하세요 (1-${TEAM_LIST.length})`,
         ));
         return;
@@ -304,7 +357,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         if (mode === 'pick-away') {
           set({ awayId: TEAM_LIST[idx].id, mode: 'pick-home' });
           print(teamListPrompt(
-            controlMode === 'solo' ? '상대팀(홈, CPU)을 선택하세요.' : '홈팀을 선택하세요.',
+            controlMode === 'solo' ? '상대팀(CPU)을 선택하세요.' : '홈팀을 선택하세요.',
             `번호를 입력하세요 (1-${TEAM_LIST.length})`,
           ));
         } else {
@@ -321,25 +374,14 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
           print([[seg('3, 5, 7, 9 중 하나를 입력하세요.', COLOR.danger)]]);
           return;
         }
-        const away = TEAM_LIST.find((t) => t.id === get().awayId)!;
-        const home = TEAM_LIST.find((t) => t.id === get().homeId)!;
-        const game = createGame(away, home, n);
-        const { controlMode } = get();
-        set({ game, mode: 'command' });
-        print([
-          [],
-          [
-            teamSeg(away.name), seg(controlMode === 'solo' ? ' (원정, 나)' : ' (원정)'), seg(' vs '),
-            teamSeg(home.name), seg(controlMode === 'solo' ? ' (홈, CPU)' : ' (홈)'),
-            seg(` — ${n}이닝 경기 시작.`),
-          ],
-          plain(
-            controlMode === 'solo'
-              ? '명령어: Enter=진행 / o 또는 d=내 팀 차례일 때 전략 / q=종료'
-              : '명령어: Enter=진행 / o=공격 전략 / d=수비 전략 / q=종료',
-          ),
-        ]);
-        print(renderBoard(game));
+        const teamA = TEAM_LIST.find((t) => t.id === get().awayId)!;
+        const teamB = TEAM_LIST.find((t) => t.id === get().homeId)!;
+        if (get().controlMode === 'solo') {
+          // teamA = 내가 고른 팀, teamB = CPU 팀 - 원정/홈은 코인토스로 정한다.
+          runHomeAwayDraw(teamA, teamB, n);
+        } else {
+          beginGame(teamA, teamB, n);
+        }
         return;
       }
 
