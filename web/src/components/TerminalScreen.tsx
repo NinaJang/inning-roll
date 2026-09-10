@@ -176,7 +176,7 @@ export default function TerminalScreen() {
 
   if (isElectron) {
     return (
-      <div className="h-screen w-screen bg-transparent flex items-center justify-center p-1">
+      <div className="h-screen w-screen bg-transparent flex items-center justify-center p-1 opacity-30 hover:opacity-100 transition-opacity duration-200">
         <div
           className="h-full w-full flex flex-col rounded-xl overflow-hidden shadow-2xl"
           style={{ fontFamily: "-apple-system, 'Segoe UI', Roboto, sans-serif" }}
