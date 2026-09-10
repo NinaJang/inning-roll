@@ -42,6 +42,9 @@ const ROLL_FRAME_MS = 160;
 const BAR_LEN = 5;
 const DRAW_FRAMES = 5;
 const DRAW_FRAME_MS = 180;
+// 1인용에서 CPU가 매 기회마다 챌린지를 걸거나 감독 전략을 지시할 확률.
+const CPU_CHALLENGE_CHANCE = 0.35;
+const CPU_STRATEGY_CHANCE = 0.3;
 
 function welcomeLines(): Line[] {
   return [
@@ -133,16 +136,45 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     }
   }
 
+  // 챌린지 수락/거절이 정해진 뒤의 공통 처리: 사람의 y/n 응답과 CPU의 자동 판단이 공유한다.
+  function settleChallenge(play: PlayEvent, side: TeamSide, accepted: boolean) {
+    const turnGen = get().turnGen!;
+    if (!accepted) {
+      finalizePlay(play);
+      drive(turnGen.next(false));
+      return;
+    }
+    const result = turnGen.next(true);
+    const overturned = !result.done && result.value.kind === 'play' && result.value.play.isReview;
+    print([[
+      seg('📺 판독 결과: ', COLOR.review),
+      overturned
+        ? seg('번복! (챌린지 횟수 유지)', COLOR.review)
+        : seg(`원심 유지 (잔여 ${get().game!.challenges[side]}회)`, COLOR.review),
+    ]]);
+    // 원심 유지라면 애초 판정이 그대로 확정된 것이므로 이제야 이닝 전환 문구를 찍는다.
+    // (번복됐다면 새 판정이 drive(result)를 거치며 스스로 확정 여부를 처리한다.)
+    if (!overturned) {
+      finalizePlay(play);
+    }
+    drive(result);
+  }
+
   function afterPlayPrinted(y: PlayYield) {
     set({ game: { ...get().game! } });
 
     if (y.needsChallenge && y.side) {
       const { controlMode, humanSide } = get();
-      // 1인용에서 CPU 쪽이 도전할 판정이면 사람에게 묻지 않고 그냥 넘어간다 (CPU는 챌린지를 쓰지 않음).
+      // 1인용에서 CPU 쪽이 도전할 판정이면, CPU 감독이 확률적으로 직접 도전 여부를 판단한다.
       if (controlMode === 'solo' && y.side !== humanSide) {
-        print([[seg('📺 CPU는 이 판정에 도전하지 않습니다.', COLOR.dim)]]);
-        finalizePlay(y.play);
-        drive(get().turnGen!.next(false));
+        const teamName = get().game!.teamNames[y.side];
+        const willChallenge = get().game!.challenges[y.side] > 0 && Math.random() < CPU_CHALLENGE_CHANCE;
+        if (willChallenge) {
+          print([[seg('📺 [CPU 챌린지] ', COLOR.review), teamSeg(teamName), seg(' 감독이 이 판정에 도전합니다!')]]);
+        } else {
+          print([[seg('📺 CPU는 이 판정에 도전하지 않습니다.', COLOR.dim)]]);
+        }
+        settleChallenge(y.play, y.side, willChallenge);
         return;
       }
       const teamName = get().game!.teamNames[y.side];
@@ -215,27 +247,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     set({ pendingChallenge: null });
     if (!turnGen || !pendingChallenge || !game) return;
 
-    if (answer === 'n') {
-      finalizePlay(pendingChallenge.play);
-      drive(turnGen.next(false));
-      return;
-    }
-
-    const side = pendingChallenge.side;
-    const result = turnGen.next(true);
-    const overturned = !result.done && result.value.kind === 'play' && result.value.play.isReview;
-    print([[
-      seg('📺 판독 결과: ', COLOR.review),
-      overturned
-        ? seg('번복! (챌린지 횟수 유지)', COLOR.review)
-        : seg(`원심 유지 (잔여 ${get().game!.challenges[side]}회)`, COLOR.review),
-    ]]);
-    // 원심 유지라면 애초 판정이 그대로 확정된 것이므로 이제야 이닝 전환 문구를 찍는다.
-    // (번복됐다면 새 판정이 drive(result)를 거치며 스스로 확정 여부를 처리한다.)
-    if (!overturned) {
-      finalizePlay(pendingChallenge.play);
-    }
-    drive(result);
+    settleChallenge(pendingChallenge.play, pendingChallenge.side, answer === 'y');
   }
 
   function handleCommand(raw: string) {
@@ -248,6 +260,18 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       return;
     }
     if (cmd === '') {
+      const { controlMode, humanSide, game } = get();
+      // 1인용에서는 CPU 차례가 되면 확률적으로 CPU 감독이 스스로 전략을 지시한다.
+      if (controlMode === 'solo' && game) {
+        const cpuSide: 'offense' | 'defense' = battingTeam(game) !== humanSide ? 'offense' : 'defense';
+        const cpuTeam = cpuSide === 'offense' ? battingTeam(game) : fieldingTeam(game);
+        if (game.strategyUses[cpuTeam] > 0 && Math.random() < CPU_STRATEGY_CHANCE) {
+          game.strategyUses[cpuTeam] -= 1;
+          print([[seg('🤖 [CPU 전략] ', COLOR.strategy), teamSeg(game.teamNames[cpuTeam]), seg(' 감독이 지시를 내립니다.')]]);
+          startCommandTurn(cpuSide);
+          return;
+        }
+      }
       startCommandTurn(null);
       return;
     }
@@ -257,9 +281,9 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       const side = cmd === 'o' ? 'offense' : 'defense';
       const team = cmd === 'o' ? battingTeam(game) : fieldingTeam(game);
 
-      // 1인용에서는 CPU 쪽 전략을 사람이 대신 걸 수 없다 (CPU는 전략을 쓰지 않음).
+      // 1인용에서는 CPU 쪽 전략을 사람이 대신 걸어줄 수 없다 (CPU 감독은 스스로 판단해서 쓴다).
       if (controlMode === 'solo' && team !== humanSide) {
-        print([[seg('CPU는 감독 전략을 사용하지 않습니다.', COLOR.dim)]]);
+        print([[seg('CPU 감독의 판단입니다 - 대신 지시할 수 없습니다.', COLOR.dim)]]);
         print(renderBoard(game));
         return;
       }
