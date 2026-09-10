@@ -276,7 +276,7 @@ export function tryChaosEvent(state: GameState): PlayEvent | null {
   const pitcherSpec = specialtyOf(pitcher);
 
   const wpChance = 0.02 + (pitcherSpec?.extraWildPitchChance ?? 0);
-  const bkChance = 0.02;
+  const bkChance = 0.01;
   const poChance = 0.03;
   const sbChance = stealFromIdx !== null
     ? 0.08 + (stealSpec?.stealAttemptBonus ?? 0)
