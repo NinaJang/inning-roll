@@ -1,10 +1,12 @@
 const { app, BrowserWindow, screen, globalShortcut } = require('electron');
 const path = require('node:path');
 
-const WINDOW_WIDTH = 380;
-const WINDOW_HEIGHT = 560;
+// 원래 창(380x560)의 절반 정도 넓이 - 진짜 윈도우 알림 패널처럼 작고 눈에 안 띄게.
+const WINDOW_WIDTH = 280;
+const WINDOW_HEIGHT = 400;
 const MARGIN = 12;
 const PANIC_SHORTCUT = 'CommandOrControl+Shift+H';
+const QUIT_SHORTCUT = 'CommandOrControl+Shift+Q';
 
 let mainWindow = null;
 
@@ -57,6 +59,11 @@ app.whenReady().then(() => {
     } else {
       mainWindow.show();
     }
+  });
+
+  // 완전 종료 키 - 창이 frameless/taskbar 없음이라 닫을 방법이 단축키/우측 상단 × 뿐이다.
+  globalShortcut.register(QUIT_SHORTCUT, () => {
+    app.quit();
   });
 
   app.on('activate', () => {
