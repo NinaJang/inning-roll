@@ -73,6 +73,13 @@ function rollingFrame(frame: number): Line {
 }
 
 export const useTerminalStore = create<TerminalStore>((set, get) => {
+  // runTurn 제너레이터가 실제로 참조/변형하는 GameState 객체 그 자체.
+  // 턴 도중 여러 판정(변수 이벤트 + 타석 굴림 등)이 연달아 나올 때, store의 `game` 필드를
+  // get().game으로 다시 읽어 복사하면 매번 "그 시점까지 store에 동기화된 스냅샷"만
+  // 복사하게 되어, 그 사이 이 살아있는 객체에 가해진 변형(아웃 수 등)이 스냅샷에 반영되지
+  // 않고 유실된다. 그래서 턴 진행 중 값을 읽거나 store에 동기화할 때는 항상 이 참조를 쓴다.
+  let liveGame: GameState | null = null;
+
   function print(newLines: Line[]) {
     set((s) => ({ lines: [...s.lines, ...newLines] }));
   }
@@ -91,8 +98,9 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
 
   // 한 커맨드 사이클(다음 진행/전략 지시)이 완전히 끝났을 때: 보드를 새로 찍고 커맨드 대기로 돌아간다.
   function settleTurn() {
-    set({ turnGen: null, game: { ...get().game! } });
-    const game = get().game!;
+    const game = { ...liveGame! };
+    liveGame = null;
+    set({ turnGen: null, game });
     if (game.gameOver) {
       print(renderFinish(game));
       set({ mode: 'over' });
@@ -115,7 +123,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
     const tick = () => {
       frame += 1;
       if (frame >= ROLL_FRAMES) {
-        replaceLastLine(renderPlay(y.play, get().game!)[0]);
+        replaceLastLine(renderPlay(y.play, liveGame!)[0]);
         set({ isAnimating: false });
         afterPlayPrinted(y);
         return;
@@ -132,7 +140,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
   // 이닝 전환 문구를 찍는다 (안 그러면 나중에 번복될 수도 있는 아웃을 미리 "종료"로 알리게 된다).
   function finalizePlay(play: PlayEvent) {
     if (play.halfEnded && !play.gameOver) {
-      print(renderHalfTransition(play, get().game!));
+      print(renderHalfTransition(play, liveGame!));
     }
   }
 
@@ -150,7 +158,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       seg('📺 판독 결과: ', COLOR.review),
       overturned
         ? seg('번복! (챌린지 횟수 유지)', COLOR.review)
-        : seg(`원심 유지 (잔여 ${get().game!.challenges[side]}회)`, COLOR.review),
+        : seg(`원심 유지 (잔여 ${liveGame!.challenges[side]}회)`, COLOR.review),
     ]]);
     // 원심 유지라면 애초 판정이 그대로 확정된 것이므로 이제야 이닝 전환 문구를 찍는다.
     // (번복됐다면 새 판정이 drive(result)를 거치며 스스로 확정 여부를 처리한다.)
@@ -161,14 +169,14 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
   }
 
   function afterPlayPrinted(y: PlayYield) {
-    set({ game: { ...get().game! } });
+    set({ game: { ...liveGame! } });
 
     if (y.needsChallenge && y.side) {
       const { controlMode, humanSide } = get();
       // 1인용에서 CPU 쪽이 도전할 판정이면, CPU 감독이 확률적으로 직접 도전 여부를 판단한다.
       if (controlMode === 'solo' && y.side !== humanSide) {
-        const teamName = get().game!.teamNames[y.side];
-        const willChallenge = get().game!.challenges[y.side] > 0 && Math.random() < CPU_CHALLENGE_CHANCE;
+        const teamName = liveGame!.teamNames[y.side];
+        const willChallenge = liveGame!.challenges[y.side] > 0 && Math.random() < CPU_CHALLENGE_CHANCE;
         if (willChallenge) {
           print([[seg('📺 [CPU 챌린지] ', COLOR.review), teamSeg(teamName), seg(' 감독이 이 판정에 도전합니다!')]]);
         } else {
@@ -177,8 +185,8 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
         settleChallenge(y.play, y.side, willChallenge);
         return;
       }
-      const teamName = get().game!.teamNames[y.side];
-      const remaining = get().game!.challenges[y.side];
+      const teamName = liveGame!.teamNames[y.side];
+      const remaining = liveGame!.challenges[y.side];
       print([[
         seg('📺 [챌린지] ', COLOR.review), teamSeg(teamName),
         seg(` - 이 판정에 도전하시겠습니까? (잔여 ${remaining}회) y/n`),
@@ -224,13 +232,14 @@ export const useTerminalStore = create<TerminalStore>((set, get) => {
       return;
     }
 
-    print(renderPlay(y.play, get().game!));
+    print(renderPlay(y.play, liveGame!));
     afterPlayPrinted(y);
   }
 
   function startCommandTurn(side: 'offense' | 'defense' | null) {
     clearAutoTimer();
     const game = get().game!;
+    liveGame = game;
     const gen = runTurn(game, side);
     set({ turnGen: gen });
     drive(gen.next());
