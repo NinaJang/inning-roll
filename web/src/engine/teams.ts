@@ -52,19 +52,21 @@ function numberLineup(lineup: Player[]): Player[] {
 
 // 실제 KBO 10개 구단의 연고지와 구단 색을 그대로 가져오되, 팀명은 그대로 쓰지 않고
 // 각 구단의 마스코트/정체성과 연결되는 다른 단어로 새로 지었다.
-//  두산 베어스(서울,네이비 곰)      -> 서울 그리즐리
-//  LG 트윈스(서울,핑크 쌍둥이)      -> 서울 제미니
-//  키움 히어로즈(서울,버건디 영웅)   -> 서울 가디언즈
-//  SSG 랜더스(인천,레드 우주)       -> 인천 보이저스
-//  NC 다이노스(창원,스카이블루 공룡) -> 창원 랩터스
-//  삼성 라이온즈(대구,블루 사자)     -> 대구 퓨마스
-//  롯데 자이언츠(부산,퍼플 거인)     -> 부산 타이탄스
-//  KIA 타이거즈(광주,앰버 호랑이)    -> 광주 재규어스
-//  한화 이글스(대전,오렌지 독수리)   -> 대전 호크스
-//  KT 위즈(수원,라임 마법사)        -> 수원 소서러스
+// (그리즐리/랩터스/타이탄스/재규어스/호크스처럼 흔히 쓰이는 마스코트 단어는
+//  다른 서비스와 겹치기 쉬워서 피하고, 덜 흔한 단어로 다시 골랐다.)
+//  두산 베어스(서울,네이비 곰)      -> 서울 코디악스 (곰의 한 종류지만 덜 흔한 이름)
+//  LG 트윈스(서울,핑크 쌍둥이)      -> 서울 미러스 (거울 = 쌍둥이처럼 비치는 상)
+//  키움 히어로즈(서울,버건디 영웅)   -> 서울 센티널스 (영웅 대신 파수꾼)
+//  SSG 랜더스(인천,레드 우주)       -> 인천 노바스 (우주선 대신 초신성)
+//  NC 다이노스(창원,스카이블루 공룡) -> 창원 스테고스 (공룡이지만 특정 종 이름)
+//  삼성 라이온즈(대구,블루 사자)     -> 대구 스핑크스 (사자 몸을 한 신화 속 존재)
+//  롯데 자이언츠(부산,퍼플 거인)     -> 부산 콜로서스 (거인 대신 거대 석상)
+//  KIA 타이거즈(광주,앰버 호랑이)    -> 광주 백호 (호랑이의 한국 신화 속 이름, 사신 중 하나)
+//  한화 이글스(대전,오렌지 독수리)   -> 대전 그리폰 (독수리+사자 모습의 신화 속 존재)
+//  KT 위즈(수원,라임 마법사)        -> 수원 룬즈 (마법사 대신 마법의 룬 문자)
 export const TEAMS: Record<string, Team> = {
-  seoulGrizzlies: {
-    id: 'seoulGrizzlies', name: '서울 그리즐리', tagline: '노련한 근성', color: 'text-blue-400',
+  seoulKodiaks: {
+    id: 'seoulKodiaks', name: '서울 코디악스', tagline: '노련한 근성', color: 'text-blue-400',
     lineup: numberLineup([
       player('문시우', '중견수', 'CONTACT'),
       player('강도윤', '유격수', 'EYE'),
@@ -78,8 +80,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('최상훈', '투수', 'GROUNDBALL'),
   },
-  seoulGemini: {
-    id: 'seoulGemini', name: '서울 제미니', tagline: '쌍둥이 화력', color: 'text-fuchsia-400',
+  seoulMirrors: {
+    id: 'seoulMirrors', name: '서울 미러스', tagline: '쌍둥이 화력', color: 'text-fuchsia-400',
     lineup: numberLineup([
       player('김도현', '중견수', 'SPEED'),
       player('이준혁', '유격수'),
@@ -93,8 +95,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('한지호', '투수', 'ACE'),
   },
-  seoulGuardians: {
-    id: 'seoulGuardians', name: '서울 가디언즈', tagline: '언더독의 반란', color: 'text-rose-400',
+  seoulSentinels: {
+    id: 'seoulSentinels', name: '서울 센티널스', tagline: '언더독의 반란', color: 'text-rose-400',
     lineup: numberLineup([
       player('오승우', '중견수', 'SPEED'),
       player('서재윤', '유격수', 'CONTACT'),
@@ -108,8 +110,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('고영훈', '투수'),
   },
-  incheonVoyagers: {
-    id: 'incheonVoyagers', name: '인천 보이저스', tagline: '화끈한 물량공세', color: 'text-red-400',
+  incheonNovas: {
+    id: 'incheonNovas', name: '인천 노바스', tagline: '화끈한 물량공세', color: 'text-red-400',
     lineup: numberLineup([
       player('문준우', '중견수'),
       player('양시윤', '유격수'),
@@ -123,8 +125,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('하동민', '투수', 'ACE'),
   },
-  changwonRaptors: {
-    id: 'changwonRaptors', name: '창원 랩터스', tagline: '빈틈없는 조직력', color: 'text-sky-400',
+  changwonStegos: {
+    id: 'changwonStegos', name: '창원 스테고스', tagline: '빈틈없는 조직력', color: 'text-sky-400',
     lineup: numberLineup([
       player('곽지안', '중견수', 'SPEED'),
       player('성민호', '유격수', 'CONTACT'),
@@ -138,8 +140,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('지상혁', '투수', 'GROUNDBALL'),
   },
-  daeguPumas: {
-    id: 'daeguPumas', name: '대구 퓨마스', tagline: '왕조의 자존심', color: 'text-indigo-400',
+  daeguSphinx: {
+    id: 'daeguSphinx', name: '대구 스핑크스', tagline: '왕조의 자존심', color: 'text-indigo-400',
     lineup: numberLineup([
       player('엄도훈', '중견수'),
       player('채영민', '유격수', 'EYE'),
@@ -153,8 +155,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('염태웅', '투수', 'ACE'),
   },
-  busanTitans: {
-    id: 'busanTitans', name: '부산 타이탄스', tagline: '거인의 심장', color: 'text-purple-400',
+  busanColossus: {
+    id: 'busanColossus', name: '부산 콜로서스', tagline: '거인의 심장', color: 'text-purple-400',
     lineup: numberLineup([
       player('여준혁', '중견수', 'CONTACT'),
       player('추상준', '유격수'),
@@ -168,8 +170,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('표승진', '투수', 'WILD'),
   },
-  gwangjuJaguars: {
-    id: 'gwangjuJaguars', name: '광주 재규어스', tagline: '우승 DNA', color: 'text-amber-400',
+  gwangjuBaekho: {
+    id: 'gwangjuBaekho', name: '광주 백호', tagline: '우승 DNA', color: 'text-amber-400',
     lineup: numberLineup([
       player('탁민준', '중견수', 'SPEED'),
       player('남궁태윤', '유격수', 'CONTACT'),
@@ -183,8 +185,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('윤도영', '투수', 'ACE'),
   },
-  daejeonHawks: {
-    id: 'daejeonHawks', name: '대전 호크스', tagline: '예측불허 매직', color: 'text-orange-400',
+  daejeonGriffon: {
+    id: 'daejeonGriffon', name: '대전 그리폰', tagline: '예측불허 매직', color: 'text-orange-400',
     lineup: numberLineup([
       player('임현수', '중견수', 'SPEED'),
       player('한상윤', '유격수', 'EYE'),
@@ -198,8 +200,8 @@ export const TEAMS: Record<string, Team> = {
     ]),
     pitcher: player('유민혁', '투수', 'WILD'),
   },
-  suwonSorcerers: {
-    id: 'suwonSorcerers', name: '수원 소서러스', tagline: '신생팀의 마법', color: 'text-lime-400',
+  suwonRunes: {
+    id: 'suwonRunes', name: '수원 룬즈', tagline: '신생팀의 마법', color: 'text-lime-400',
     lineup: numberLineup([
       player('고태민', '중견수', 'CONTACT'),
       player('문준혁', '유격수'),
