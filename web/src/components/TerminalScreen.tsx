@@ -84,7 +84,15 @@ export default function TerminalScreen() {
           <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
           <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
           <span className="ml-2 text-neutral-400 text-xs">inning-roll — bash</span>
-          <label className="ml-auto flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
+          <a
+            href="https://claude.ai/code/artifact/94e4f1e9-be3b-4153-a59b-a92a98430571"
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto text-xs text-neutral-400 hover:text-emerald-400 underline decoration-dotted"
+          >
+            ❓ 룰북
+          </a>
+          <label className="flex items-center gap-1.5 text-xs text-neutral-400 cursor-pointer select-none">
             ⚡ff
             <input type="checkbox" checked={fastForward} onChange={toggleFastForward} className="w-3.5 h-3.5 accent-emerald-500" />
           </label>
